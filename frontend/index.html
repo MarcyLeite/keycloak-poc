@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Keycloak PoC</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <main>
+      <h1>Keycloak PoC</h1>
+
+      <section id="logged-out" hidden>
+        <p>You are not logged in.</p>
+        <button id="login">Log in with Keycloak</button>
+        <p class="hint">Test users: <code>alice / alice</code> (premium: all ops), <code>bob / bob</code> (basic: sum only), <code>carol / carol</code> (admin: all ops + user management)</p>
+      </section>
+
+      <section id="logged-in" hidden>
+        <p>Logged in as <strong id="username"></strong> — roles: <span id="roles"></span></p>
+        <button id="logout">Log out</button>
+
+        <h2>Calculator</h2>
+        <div class="calc">
+          <input id="a" type="number" value="2" aria-label="a" />
+          <input id="b" type="number" value="8" aria-label="b" />
+          <button data-op="sum">a + b</button>
+          <button data-op="multiply">a × b</button>
+          <button data-op="power">a ^ b</button>
+        </div>
+        <pre id="result">—</pre>
+
+        <div id="admin" hidden>
+          <h2>Admin · Users</h2>
+          <form id="create-user" class="form-grid">
+            <input name="username" placeholder="Username" autocomplete="off" required />
+            <input name="email" type="email" placeholder="Email" autocomplete="off" required />
+            <input name="firstName" placeholder="First name" required />
+            <input name="lastName" placeholder="Last name" required />
+            <input name="password" type="password" placeholder="Password" autocomplete="new-password" required />
+            <select name="group" aria-label="Group"></select>
+            <button type="submit">Create user</button>
+          </form>
+          <p id="admin-status" class="hint"></p>
+          <table>
+            <thead><tr><th>Username</th><th>Name</th><th>Email</th><th>Group</th></tr></thead>
+            <tbody id="users"></tbody>
+          </table>
+        </div>
+
+        <details>
+          <summary>Access token claims</summary>
+          <pre id="claims"></pre>
+        </details>
+      </section>
+    </main>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

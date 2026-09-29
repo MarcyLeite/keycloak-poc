@@ -1,0 +1,13 @@
+services:
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.7.4
+    container_name: keycloak-poc
+    command: ["start-dev"]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+      KC_HEALTH_ENABLED: "true"
+      # Tokens are issued with iss=http://localhost:8080/realms/poc
+      KC_HOSTNAME: http://localhost:8080
+    ports:
+      - "8080:8080"

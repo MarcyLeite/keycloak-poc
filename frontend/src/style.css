@@ -1,0 +1,12 @@
+body { font-family: system-ui, sans-serif; margin: 0; background: #f6f7f9; color: #1d2330; }
+main { max-width: 720px; margin: 2rem auto; padding: 0 16px; }
+button { padding: .5rem .9rem; border: 1px solid #4a5bd4; background: #4a5bd4; color: #fff; border-radius: 6px; cursor: pointer; }
+button:hover { background: #3a49b4; }
+input, select { padding: .45rem; border: 1px solid #c4c9d4; border-radius: 6px; }
+.calc input { width: 6rem; }
+.calc { display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; }
+pre { background: #fff; border: 1px solid #dde1e8; border-radius: 6px; padding: .75rem; overflow-x: auto; }
+.hint { color: #5b6475; font-size: .9rem; }
+.form-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: .5rem; }
+table { width: 100%; border-collapse: collapse; margin-top: .5rem; background: #fff; }
+th, td { text-align: left; padding: .45rem .6rem; border-bottom: 1px solid #dde1e8; }
