@@ -1,5 +1,4 @@
 import express from 'express';
-import cors from 'cors';
 import { authenticate, requireRole } from './auth.js';
 import { adminRouter } from './admin.js';
 import { KeycloakError } from './keycloakAdmin.js';
@@ -7,7 +6,6 @@ import { KeycloakError } from './keycloakAdmin.js';
 const PORT = process.env.PORT ?? 3000;
 const app = express();
 
-app.use(cors({ origin: 'http://localhost:5173' }));
 app.use(express.json());
 
 function parseOperands(req, res) {

@@ -4,20 +4,22 @@
 //
 //   node keycloak/seed.mjs
 //
-// Env: KEYCLOAK_URL (default http://localhost:8080), KEYCLOAK_ADMIN / KEYCLOAK_ADMIN_PASSWORD (default admin/admin),
+// Env: KEYCLOAK_URL (default http://localhost/auth), KEYCLOAK_ADMIN / KEYCLOAK_ADMIN_PASSWORD (default admin/admin),
 //      BACKEND_CLIENT_SECRET (default poc-backend-secret)
 
-const KEYCLOAK_URL = process.env.KEYCLOAK_URL ?? 'http://localhost:8080';
+const KEYCLOAK_URL = process.env.KEYCLOAK_URL ?? 'http://localhost/auth';
 const ADMIN_USER = process.env.KEYCLOAK_ADMIN ?? 'admin';
 const ADMIN_PASSWORD = process.env.KEYCLOAK_ADMIN_PASSWORD ?? 'admin';
 const REALM = 'poc';
-const FRONTEND_URL = 'http://localhost:5173';
+const FRONTEND_URL = 'http://localhost';
 // Secret the backend uses for its service account (client credentials). Dev-only default.
 const BACKEND_CLIENT_SECRET = process.env.BACKEND_CLIENT_SECRET ?? 'poc-backend-secret';
 
 const config = {
   realm: {
     realm: REALM,
+    displayName: 'Keycloak PoC',
+    loginTheme: 'poc',
     enabled: true,
     sslRequired: 'none',
     registrationAllowed: false,

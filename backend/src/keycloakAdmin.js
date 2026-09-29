@@ -1,7 +1,7 @@
 // Calls the Keycloak Admin REST API as the backend's service account (client credentials).
 // The service account only has realm-management: view-users, manage-users, query-groups.
 
-const KEYCLOAK_URL = process.env.KEYCLOAK_URL ?? 'http://localhost:8080';
+const KEYCLOAK_URL = process.env.KEYCLOAK_URL ?? 'http://localhost/auth';
 const REALM = process.env.KEYCLOAK_REALM ?? 'poc';
 const CLIENT_ID = process.env.KEYCLOAK_CLIENT_ID ?? 'poc-backend';
 const CLIENT_SECRET = process.env.KEYCLOAK_CLIENT_SECRET ?? 'poc-backend-secret';
@@ -48,7 +48,8 @@ async function api(method, path, body) {
     // Surface Keycloak's own message for client errors (e.g. 409 "User exists with same username").
     let message = text;
     try {
-      message = JSON.parse(text).errorMessage ?? text;
+      const parsed = JSON.parse(text);
+      message = parsed.errorMessage ?? parsed.error ?? text;
     } catch {
       // not JSON
     }

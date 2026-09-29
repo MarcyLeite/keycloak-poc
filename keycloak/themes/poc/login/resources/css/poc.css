@@ -1,0 +1,90 @@
+/* PoC brand: same palette and font as frontend/src/style.css */
+:root {
+  --poc-primary: #4a5bd4;
+  --poc-primary-hover: #3a49b4;
+  --poc-bg: #f6f7f9;
+  --poc-surface: #fff;
+  --poc-border: #dde1e8;
+  --poc-text: #1d2330;
+  --poc-muted: #5b6475;
+  --poc-font: system-ui, sans-serif;
+
+  /* PatternFly globals that Keycloak's components read from */
+  --pf-v5-global--primary-color--100: var(--poc-primary);
+  --pf-v5-global--primary-color--200: var(--poc-primary-hover);
+  --pf-v5-global--link--Color: var(--poc-primary);
+  --pf-v5-global--link--Color--hover: var(--poc-primary-hover);
+  --pf-v5-global--FontFamily--text: var(--poc-font);
+  --pf-v5-global--FontFamily--heading: var(--poc-font);
+  --pf-v5-global--Color--100: var(--poc-text);
+  --keycloak-card-top-color: var(--poc-primary);
+}
+
+/* Plain app background instead of Keycloak's artwork */
+.login-pf body,
+.pf-v5-c-login {
+  background: var(--poc-bg);
+  font-family: var(--poc-font);
+}
+
+/* Brand header: realm display name as a wordmark */
+#kc-header-wrapper {
+  /* keycloak.v2 forces white (meant for its dark background image) with !important */
+  color: var(--poc-text) !important;
+  font-size: 1.75rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  text-transform: none;
+}
+#kc-header-wrapper::before {
+  content: "∑";
+  display: inline-grid;
+  place-items: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  margin-right: .6rem;
+  border-radius: 8px;
+  background: var(--poc-primary);
+  color: #fff;
+  font-size: 1.25rem;
+  vertical-align: middle;
+}
+#kc-header-wrapper::after {
+  content: "Sum · Multiply · Power";
+  display: block;
+  margin-top: .35rem;
+  color: var(--poc-muted);
+  font-size: .95rem;
+  font-weight: 400;
+}
+
+/* Card: same look as the app's panels */
+.pf-v5-c-login__main {
+  background: var(--poc-surface);
+  border: 1px solid var(--poc-border);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(29, 35, 48, .08);
+  overflow: hidden;
+}
+.pf-v5-c-login__main-header {
+  border-top-width: 4px;
+}
+#kc-page-title {
+  font-weight: 600;
+}
+
+/* Inputs and buttons: rounded like the app */
+.pf-v5-c-form-control {
+  border-radius: 6px;
+}
+.pf-v5-c-button {
+  border-radius: 6px;
+}
+
+/* Phones: full-width card with a small gutter */
+@media (max-width: 600px) {
+  .pf-v5-c-login__container {
+    grid-template-columns: 1fr;
+    padding: 0 16px;
+  }
+}

@@ -1,10 +1,12 @@
 import { createRemoteJWKSet, jwtVerify } from 'jose';
 
-const ISSUER = process.env.KEYCLOAK_ISSUER ?? 'http://localhost:8080/realms/poc';
+const ISSUER = process.env.KEYCLOAK_ISSUER ?? 'http://localhost/auth/realms/poc';
 const AUDIENCE = process.env.KEYCLOAK_AUDIENCE ?? 'poc-backend';
 
 // Keys are fetched from Keycloak and cached; rotation is handled automatically.
-const jwks = createRemoteJWKSet(new URL(`${ISSUER}/protocol/openid-connect/certs`));
+// Inside Docker the issuer URL isn't reachable, so the keys can come from an internal URL.
+const JWKS_URL = process.env.KEYCLOAK_JWKS_URL ?? `${ISSUER}/protocol/openid-connect/certs`;
+const jwks = createRemoteJWKSet(new URL(JWKS_URL));
 
 export async function authenticate(req, res, next) {
   const header = req.headers.authorization ?? '';

@@ -1,9 +1,10 @@
 import Keycloak from 'keycloak-js';
 
-const API_URL = 'http://localhost:3000/api';
+// Everything is served from one origin through nginx, so relative URLs work.
+const API_URL = '/api';
 
 const keycloak = new Keycloak({
-  url: 'http://localhost:8080',
+  url: `${window.location.origin}/auth`,
   realm: 'poc',
   clientId: 'poc-frontend',
 });

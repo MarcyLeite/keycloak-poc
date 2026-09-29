@@ -1,4 +1,20 @@
+# Everything is reachable through nginx at http://localhost:
+#   http://localhost/          frontend
+#   http://localhost/api/      backend
+#   http://localhost/auth/     Keycloak (admin console: /auth/admin)
 services:
+  nginx:
+    image: nginx:1.29-alpine
+    container_name: keycloak-poc-nginx
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - keycloak
+      - backend
+      - frontend
+
   keycloak:
     image: quay.io/keycloak/keycloak:26.7.4
     container_name: keycloak-poc
@@ -7,7 +23,33 @@ services:
       KC_BOOTSTRAP_ADMIN_USERNAME: admin
       KC_BOOTSTRAP_ADMIN_PASSWORD: admin
       KC_HEALTH_ENABLED: "true"
-      # Tokens are issued with iss=http://localhost:8080/realms/poc
-      KC_HOSTNAME: http://localhost:8080
-    ports:
-      - "8080:8080"
+      # Served under /auth behind nginx. Tokens are issued with iss=http://localhost/auth/realms/poc
+      KC_HTTP_RELATIVE_PATH: /auth
+      KC_HOSTNAME: http://localhost/auth
+      KC_PROXY_HEADERS: xforwarded
+    volumes:
+      # Custom login theme. start-dev disables theme caching, so CSS edits show up on refresh.
+      - ./keycloak/themes/poc:/opt/keycloak/themes/poc:ro
+
+  backend:
+    image: node:24-slim
+    container_name: keycloak-poc-backend
+    working_dir: /app
+    command: sh -c "npm install --no-audit --no-fund && exec npm run dev"
+    environment:
+      # Public issuer (what the browser sees) vs. internal URL (container-to-container).
+      KEYCLOAK_ISSUER: http://localhost/auth/realms/poc
+      KEYCLOAK_URL: http://keycloak:8080/auth
+      KEYCLOAK_JWKS_URL: http://keycloak:8080/auth/realms/poc/protocol/openid-connect/certs
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+
+  frontend:
+    image: node:24-slim
+    container_name: keycloak-poc-frontend
+    working_dir: /app
+    command: sh -c "npm install --no-audit --no-fund && exec npm run dev -- --host 0.0.0.0"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
