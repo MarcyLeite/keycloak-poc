@@ -38,7 +38,7 @@ Logs: `docker compose logs -f backend frontend`.
 compose.yaml                 nginx, Keycloak, backend, frontend
 nginx/default.conf           routes /, /api/, /auth/ to the right container
 keycloak/seed.mjs            realm setup through the Keycloak Admin API
-keycloak/themes/poc/         branded login theme (CSS only)
+keycloak/themes/poc/         branded login theme (CSS + license terms text)
 backend/src/server.js        Express app: math endpoints, error handling
 backend/src/auth.js          JWT validation (JWKS, iss, aud) and role checks
 backend/src/admin.js         /api/admin/* routes (admin role only)
@@ -49,7 +49,7 @@ frontend/src/main.js         keycloak-js login, calculator, admin panel
 ## Login page
 
 Keycloak's login pages use the custom `poc` theme (`keycloak/themes/poc`), which matches the app's look.
-It extends the built-in `keycloak.v2` theme and only overrides CSS, so every Keycloak login flow
+It extends the built-in `keycloak.v2` theme and only overrides CSS and a few messages, so every Keycloak login flow
 (errors, password reset, required actions) keeps working. The title comes from the realm's `displayName`.
 
 Edit `keycloak/themes/poc/login/resources/css/poc.css`. Keycloak runs in dev mode with theme caching off,
@@ -84,10 +84,53 @@ The `admin` role also unlocks user management (see below).
 Roles live in the access token, so a group change reaches a user on their next token refresh
 (access tokens last 5 minutes) or next login.
 
+## License terms
+
+Every user must accept the license terms after login, before Keycloak sends them back to the app.
+This is Keycloak's built-in **Terms and Conditions** required action, enabled by the seed as a *default action*,
+so every new user gets it (including users created from the admin panel).
+
+- **Accept**: Keycloak stores the time in the user's internal `terms_and_conditions` attribute and won't ask again.
+  The `terms-accepted-at` mapper copies it into the token as `terms_accepted_at`; the app shows the date.
+- **Decline**: the login is cancelled and the app gets `access_denied` with no token. The terms are shown again on the next login.
+- **Ask again** (admin panel): puts the required action back on a user, e.g. after the terms change.
+
+The text lives in `keycloak/themes/poc/login/messages/messages_en.properties` (`termsTitle`, `termsText`).
+Users who already existed when the terms were enabled aren't asked until an admin clicks **Ask again**;
+re-running the seed doesn't change that.
+
+## Permissions (consent)
+
+`poc-frontend` has **Consent Required** on, so on first login Keycloak shows a consent screen listing what the
+app gets: user profile, user roles, email address. If the user clicks **No**, the login is cancelled.
+
+The app can also ask for two extra permissions. Each is an *optional client scope* with its own consent text:
+
+| Scope           | Consent screen text          | Backend endpoint           |
+|-----------------|------------------------------|----------------------------|
+| `send-email`    | Send emails on your behalf   | `POST /api/email/send` (simulated) |
+| `read-contacts` | Read your contacts           | `GET /api/contacts` (fake data)    |
+
+They aren't requested at login. The **Permissions** panel has an **Allow…** button for each one. It logs in again with
+`scope=openid <scope>`, and Keycloak shows a consent screen for just that new permission.
+
+How to check what a user granted:
+
+- **In the token**: the access token's `scope` claim, e.g. `openid profile email send-email`. The backend checks it
+  with `requireScope()` and answers `403 Missing scope: ...` when a permission wasn't granted (roles say what a user
+  *may* do; scopes say what the user *allowed this app* to do).
+- **Admin panel**: the *Granted scopes* column, read from the Admin API (`GET /users/{id}/consents`).
+- **The user**: Keycloak account console → *Applications* (button *Review or revoke in Keycloak account*) lists
+  each grant and lets the user remove access.
+
+Keycloak only puts an optional scope in the token when the app asks for it, so the frontend remembers granted
+optional scopes in `localStorage` and asks for them again on every login.
+
 ## User management (admin)
 
 Log in as `carol` to see the **Admin · Users** panel. From there you can create a user and pick their group,
-or move an existing user to another group.
+or move an existing user to another group. The table also shows whether each user accepted the license terms
+and which scopes they granted to the frontend.
 
 The browser never calls the Keycloak Admin API itself:
 
@@ -105,15 +148,18 @@ All endpoints except `/api/health` require a valid token. Operands are `a` and `
 | Endpoint                   | Role         | Result   |
 |----------------------------|--------------|----------|
 | `GET /api/health`          | —            | `ok`     |
-| `GET /api/me`              | any          | user + roles |
+| `GET /api/me`              | any          | user, roles, granted scopes |
 | `GET /api/sum?a=2&b=8`     | `math-1`     | `10`     |
 | `GET /api/multiply?a=2&b=8`| `math-2`     | `16`     |
 | `GET /api/power?a=2&b=8`   | `math-3`     | `256`    |
 | `GET /api/admin/users`     | `admin`      | users with their group |
 | `POST /api/admin/users`    | `admin`      | create user: `{username, email, firstName, lastName, password, group}` |
 | `PUT /api/admin/users/:id/group` | `admin` | set group: `{group}` |
+| `POST /api/admin/users/:id/require-terms` | `admin` | ask the user to accept the terms again |
+| `POST /api/email/send`     | scope `send-email`    | simulated email to the user |
+| `GET /api/contacts`        | scope `read-contacts` | fake contact list |
 
-Responses: `401` missing or invalid token, `403` missing role, `400` invalid input, `404` unknown user,
+Responses: `401` missing or invalid token, `403` missing role or scope, `400` invalid input, `404` unknown user,
 `409` username or email already taken.
 
 ## Seeding Keycloak
@@ -122,9 +168,11 @@ Responses: `401` missing or invalid token, `403` missing role, `400` invalid inp
 It waits for Keycloak, logs in as the master-realm admin, then creates or updates:
 
 - realm `poc` (display name and the `poc` login theme)
+- the Terms and Conditions required action (enabled, default for new users)
+- client scopes `send-email` and `read-contacts` (shown on the consent screen)
 - realm roles `math-1`, `math-2`, `math-3`, `admin`
 - groups `basic`, `premium` and `admin` and the roles each one grants
-- clients `poc-frontend` (with the `poc-backend` audience mapper) and `poc-backend`
+- clients `poc-frontend` (consent required, optional scopes, `poc-backend` audience and `terms_accepted_at` mappers) and `poc-backend`
 - the `poc-backend` service account and its `realm-management` roles
 - users `alice`, `bob` and `carol`, their passwords, and their group membership (any `math-*` roles assigned directly to a user are removed, so groups are the only source)
 

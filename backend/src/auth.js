@@ -18,7 +18,10 @@ export async function authenticate(req, res, next) {
     const { payload } = await jwtVerify(token, jwks, { issuer: ISSUER, audience: AUDIENCE });
     req.user = {
       username: payload.preferred_username,
+      email: payload.email,
       roles: payload.realm_access?.roles ?? [],
+      // Scopes the user consented to for this client, e.g. "openid email profile send-email".
+      scopes: payload.scope?.split(' ') ?? [],
     };
     next();
   } catch (err) {
@@ -30,6 +33,16 @@ export function requireRole(role) {
   return (req, res, next) => {
     if (!req.user.roles.includes(role)) {
       return res.status(403).json({ error: `Missing role: ${role}` });
+    }
+    next();
+  };
+}
+
+// Roles say what the user may do; scopes say what the user allowed this app to do for them.
+export function requireScope(scope) {
+  return (req, res, next) => {
+    if (!req.user.scopes.includes(scope)) {
+      return res.status(403).json({ error: `Missing scope: ${scope} (the user has not granted this permission)` });
     }
     next();
   };

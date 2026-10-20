@@ -1,5 +1,5 @@
 import express from 'express';
-import { authenticate, requireRole } from './auth.js';
+import { authenticate, requireRole, requireScope } from './auth.js';
 import { adminRouter } from './admin.js';
 import { KeycloakError } from './keycloakAdmin.js';
 
@@ -37,6 +37,22 @@ app.get('/api/multiply', requireRole('math-2'), (req, res) => {
 app.get('/api/power', requireRole('math-3'), (req, res) => {
   const ops = parseOperands(req, res);
   if (ops) res.json({ operation: 'power', a: ops[0], b: ops[1], result: ops[0] ** ops[1], by: req.user.username });
+});
+
+// Demo endpoints guarded by consent scopes instead of roles. Nothing is really sent or stored.
+app.post('/api/email/send', requireScope('send-email'), (req, res) => {
+  console.log(`[email] would send a test email to ${req.user.email} for ${req.user.username}`);
+  res.json({ simulated: true, to: req.user.email, subject: 'Hello from the Keycloak PoC' });
+});
+
+app.get('/api/contacts', requireScope('read-contacts'), (req, res) => {
+  res.json({
+    owner: req.user.username,
+    contacts: [
+      { name: 'Ada Lovelace', email: 'ada@example.com' },
+      { name: 'Alan Turing', email: 'alan@example.com' },
+    ],
+  });
 });
 
 app.use('/api/admin', requireRole('admin'), adminRouter);

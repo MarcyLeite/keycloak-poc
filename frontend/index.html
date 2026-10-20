@@ -12,12 +12,14 @@
 
       <section id="logged-out" hidden>
         <p>You are not logged in.</p>
+        <p id="login-error" class="error"></p>
         <button id="login">Log in with Keycloak</button>
         <p class="hint">Test users: <code>alice / alice</code> (premium: all ops), <code>bob / bob</code> (basic: sum only), <code>carol / carol</code> (admin: all ops + user management)</p>
       </section>
 
       <section id="logged-in" hidden>
         <p>Logged in as <strong id="username"></strong> — roles: <span id="roles"></span></p>
+        <p class="hint" id="terms"></p>
         <button id="logout">Log out</button>
 
         <h2>Calculator</h2>
@@ -29,6 +31,16 @@
           <button data-op="power">a ^ b</button>
         </div>
         <pre id="result">—</pre>
+
+        <h2>Permissions</h2>
+        <p class="hint">What you allowed this app to do (the token's <code>scope</code> claim). Extra permissions are asked for only when you need them.</p>
+        <table>
+          <thead><tr><th>Permission</th><th>Scope</th><th>Status</th><th>Try it</th></tr></thead>
+          <tbody id="permissions"></tbody>
+        </table>
+        <p id="permissions-status" class="hint"></p>
+        <button id="account">Review or revoke in Keycloak account</button>
+        <pre id="permission-result">—</pre>
 
         <div id="admin" hidden>
           <h2>Admin · Users</h2>
@@ -43,7 +55,7 @@
           </form>
           <p id="admin-status" class="hint"></p>
           <table>
-            <thead><tr><th>Username</th><th>Name</th><th>Email</th><th>Group</th></tr></thead>
+            <thead><tr><th>Username</th><th>Name</th><th>Email</th><th>Group</th><th>Terms</th><th>Granted scopes</th></tr></thead>
             <tbody id="users"></tbody>
           </table>
         </div>

@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { TIER_GROUPS, createUser, listUsers, setUserGroup } from './keycloakAdmin.js';
+import { TIER_GROUPS, createUser, listUsers, requireTerms, setUserGroup } from './keycloakAdmin.js';
 
 // Mounted behind authenticate + requireRole('admin').
 export const adminRouter = Router();
@@ -36,4 +36,10 @@ adminRouter.put('/users/:id/group', async (req, res) => {
   await setUserGroup(req.params.id, group);
   console.log(`[admin] ${req.user.username} moved user ${req.params.id} to group ${group}`);
   res.json({ id: req.params.id, group });
+});
+
+adminRouter.post('/users/:id/require-terms', async (req, res) => {
+  await requireTerms(req.params.id);
+  console.log(`[admin] ${req.user.username} asked user ${req.params.id} to accept the terms again`);
+  res.json({ id: req.params.id, termsPending: true });
 });

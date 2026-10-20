@@ -31,6 +31,33 @@ const config = {
     { name: 'math-3', description: 'Can call power' },
     { name: 'admin', description: 'Can create users and assign their group' },
   ],
+  // Required actions are shown after login until the user completes them.
+  // defaultAction adds it to every new user, including ones created through the Admin API.
+  requiredActions: [{ alias: 'TERMS_AND_CONDITIONS', enabled: true, defaultAction: true }],
+  // Custom permissions the SPA can ask for. Each one is listed on Keycloak's consent screen and,
+  // once granted, appears in the access token's `scope` claim.
+  clientScopes: [
+    {
+      name: 'send-email',
+      description: 'Send emails on the user\'s behalf',
+      protocol: 'openid-connect',
+      attributes: {
+        'display.on.consent.screen': 'true',
+        'consent.screen.text': 'Send emails on your behalf',
+        'include.in.token.scope': 'true',
+      },
+    },
+    {
+      name: 'read-contacts',
+      description: 'Read the user\'s contacts',
+      protocol: 'openid-connect',
+      attributes: {
+        'display.on.consent.screen': 'true',
+        'consent.screen.text': 'Read your contacts',
+        'include.in.token.scope': 'true',
+      },
+    },
+  ],
   groups: [
     { name: 'basic', roles: ['math-1'] },
     { name: 'premium', roles: ['math-1', 'math-2', 'math-3'] },
@@ -46,6 +73,10 @@ const config = {
       standardFlowEnabled: true,
       implicitFlowEnabled: false,
       directAccessGrantsEnabled: false,
+      // Users must approve the scopes this client gets (profile, email, roles...) on a consent screen.
+      consentRequired: true,
+      // Not granted at login: the SPA asks for them later with scope=..., which shows the consent screen again.
+      optionalClientScopes: ['send-email', 'read-contacts'],
       redirectUris: [`${FRONTEND_URL}/*`],
       webOrigins: [FRONTEND_URL],
       attributes: {
@@ -60,6 +91,19 @@ const config = {
           config: {
             'included.client.audience': 'poc-backend',
             'id.token.claim': 'false',
+            'access.token.claim': 'true',
+          },
+        },
+        {
+          // Keycloak stores when the user accepted the terms (epoch seconds) in this internal attribute.
+          name: 'terms-accepted-at',
+          protocol: 'openid-connect',
+          protocolMapper: 'oidc-usermodel-attribute-mapper',
+          config: {
+            'user.attribute': 'terms_and_conditions',
+            'claim.name': 'terms_accepted_at',
+            'jsonType.label': 'long',
+            'id.token.claim': 'true',
             'access.token.claim': 'true',
           },
         },
@@ -177,11 +221,35 @@ async function upsertRoles() {
   }
 }
 
+async function upsertRequiredActions() {
+  for (const action of config.requiredActions) {
+    const path = `/${REALM}/authentication/required-actions/${action.alias}`;
+    await api('PUT', path, { ...(await api('GET', path)), ...action });
+    log('updated', 'action', action.alias);
+  }
+}
+
+const findClientScope = async (name) =>
+  (await api('GET', `/${REALM}/client-scopes`)).find((s) => s.name === name);
+
+async function upsertClientScopes() {
+  for (const scope of config.clientScopes) {
+    const existing = await findClientScope(scope.name);
+    if (existing) {
+      await api('PUT', `/${REALM}/client-scopes/${existing.id}`, { ...existing, ...scope });
+      log('updated', 'scope', scope.name);
+    } else {
+      await api('POST', `/${REALM}/client-scopes`, scope);
+      log('created', 'scope', scope.name);
+    }
+  }
+}
+
 const findClient = async (clientId) =>
   (await api('GET', `/${REALM}/clients?clientId=${encodeURIComponent(clientId)}`))[0];
 
 async function upsertClients() {
-  for (const { protocolMappers = [], serviceAccountRoles = {}, ...client } of config.clients) {
+  for (const { protocolMappers = [], optionalClientScopes = [], serviceAccountRoles = {}, ...client } of config.clients) {
     const existing = await findClient(client.clientId);
     if (existing) {
       await api('PUT', `/${REALM}/clients/${existing.id}`, {
@@ -207,6 +275,14 @@ async function upsertClients() {
         await api('POST', mappersPath, mapper);
         log('created', 'mapper', `${client.clientId}/${mapper.name}`);
       }
+    }
+
+    const optionalPath = `/${REALM}/clients/${id}/optional-client-scopes`;
+    const currentOptional = await api('GET', optionalPath);
+    for (const name of optionalClientScopes.filter((n) => !currentOptional.some((s) => s.name === n))) {
+      const scope = await findClientScope(name);
+      await api('PUT', `${optionalPath}/${scope.id}`);
+      log('added', 'scope', `${client.clientId} optional: ${name}`);
     }
 
     // Grant client roles (e.g. realm-management/manage-users) to the client's service account.
@@ -290,8 +366,10 @@ async function upsertUsers() {
 await waitForKeycloak();
 await login();
 await upsertRealm();
+await upsertRequiredActions();
 await upsertRoles();
 await upsertGroups();
+await upsertClientScopes();
 await upsertClients();
 await upsertUsers();
 console.log(`\nDone. Realm "${REALM}" is ready at ${KEYCLOAK_URL}/realms/${REALM}`);
