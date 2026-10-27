@@ -1,35 +1,27 @@
 [
   {
-    "id": "product-updates",
-    "label": "Product update emails",
-    "description": "Emails about new features and changes to the app.",
-    "enabled": true,
-    "revision": 1,
-    "createdAt": "2026-10-27T00:00:00Z",
-    "createdBy": null,
-    "updatedAt": "2026-10-27T00:00:00Z",
-    "updatedBy": null
-  },
-  {
-    "id": "newsletter",
-    "label": "Monthly newsletter",
-    "description": "A monthly email with tips, news and events.",
-    "enabled": true,
-    "revision": 1,
-    "createdAt": "2026-10-27T00:00:00Z",
-    "createdBy": null,
-    "updatedAt": "2026-10-27T00:00:00Z",
-    "updatedBy": null
-  },
-  {
-    "id": "usage-analytics",
-    "label": "Usage analytics",
-    "description": "Share how you use the app, without your name, so we can improve it.",
-    "enabled": true,
-    "revision": 1,
-    "createdAt": "2026-10-27T00:00:00Z",
-    "createdBy": null,
-    "updatedAt": "2026-10-27T00:00:00Z",
-    "updatedBy": null
+    "version": 1,
+    "publishedAt": "2026-10-27T00:00:00Z",
+    "publishedBy": null,
+    "permissions": [
+      {
+        "id": "product-updates",
+        "label": "Product update emails",
+        "description": "Emails about new features and changes to the app.",
+        "enabled": true
+      },
+      {
+        "id": "newsletter",
+        "label": "Monthly newsletter",
+        "description": "A monthly email with tips, news and events.",
+        "enabled": true
+      },
+      {
+        "id": "usage-analytics",
+        "label": "Usage analytics",
+        "description": "Share how you use the app, without your name, so we can improve it.",
+        "enabled": true
+      }
+    ]
   }
 ]

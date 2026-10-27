@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { TIER_GROUPS, createUser, listUsers, setUserGroup } from './keycloakAdmin.js';
 import { acceptanceOf, listTerms, publishTerms } from './terms.js';
-import { createPermission, deletePermission, grantedUsers, listPermissions, updatePermission } from './optionalPermissions.js';
+import { createPermission, currentSet, deletePermission, grantedUsers, updatePermission } from './optionalPermissions.js';
 
 // Mounted behind authenticate + requireRole('admin').
 export const adminRouter = Router();
@@ -57,25 +57,35 @@ adminRouter.post('/terms', async (req, res) => {
   res.status(201).json(entry);
 });
 
-// Optional permissions (enabled and disabled) with who is opted in to each, e.g. the recipients of
-// product update emails.
-adminRouter.get('/optional-permissions', async (_req, res) => {
-  const permissions = await listPermissions();
-  res.json(await Promise.all(permissions.map(async (p) => ({ ...p, grantedUsers: await grantedUsers(p.id) }))));
+// The current set of optional permissions (enabled and disabled) with who is opted in to each, e.g. the
+// recipients of product update emails.
+const setWithGrants = async (set) => ({
+  ...set,
+  permissions: await Promise.all(set.permissions.map(async (p) => ({ ...p, grantedUsers: await grantedUsers(p.id) }))),
 });
 
-// New permissions start off for everyone, and users are asked to choose.
+adminRouter.get('/optional-permissions', async (_req, res) => {
+  res.json(await setWithGrants(await currentSet()));
+});
+
+// Every change below publishes a new version of the whole set: everyone's choices are reset and every user
+// is asked to review all optional permissions again.
+const published = async (req, res, set, what) => {
+  console.log(`[admin] ${req.user.username} ${what}: optional permissions version ${set.version}`);
+  res.json(await setWithGrants(set));
+};
+
 adminRouter.post('/optional-permissions', async (req, res) => {
   const { label, description } = req.body ?? {};
   if (typeof label !== 'string' || !label.trim() || typeof description !== 'string' || !description.trim()) {
     return res.status(400).json({ error: 'Missing fields: label and description are required' });
   }
-  const permission = await createPermission({ label: label.trim(), description: description.trim() }, req.user.username);
-  console.log(`[admin] ${req.user.username} added optional permission ${permission.id}`);
-  res.status(201).json(permission);
+  const set = await createPermission({ label: label.trim(), description: description.trim() }, req.user.username);
+  res.status(201);
+  await published(req, res, set, `added "${label.trim()}"`);
 });
 
-// Edit name/description or enable/disable. A new text, or enabling it again, asks every user again.
+// Edit name/description and/or enable/disable.
 adminRouter.put('/optional-permissions/:id', async (req, res) => {
   const { label, description, enabled } = req.body ?? {};
   const changes = {};
@@ -88,14 +98,12 @@ adminRouter.put('/optional-permissions/:id', async (req, res) => {
     if (typeof enabled !== 'boolean') return res.status(400).json({ error: 'enabled must be true or false' });
     changes.enabled = enabled;
   }
-  const permission = await updatePermission(req.params.id, changes, req.user.username);
-  console.log(`[admin] ${req.user.username} updated optional permission ${permission.id} (revision ${permission.revision}, ${permission.enabled ? 'enabled' : 'disabled'})`);
-  res.json(permission);
+  const set = await updatePermission(req.params.id, changes, req.user.username);
+  await published(req, res, set, `updated ${req.params.id}`);
 });
 
-// Soft delete: users stop seeing it and nobody counts as opted in, but past choices stay on record.
+// Removed from the new version. Earlier versions keep it, so past choices still make sense.
 adminRouter.delete('/optional-permissions/:id', async (req, res) => {
-  const permission = await deletePermission(req.params.id, req.user.username);
-  console.log(`[admin] ${req.user.username} deleted optional permission ${permission.id}`);
-  res.json(permission);
+  const set = await deletePermission(req.params.id, req.user.username);
+  await published(req, res, set, `deleted ${req.params.id}`);
 });

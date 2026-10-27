@@ -153,29 +153,31 @@ function permissionCell(p) {
   return cell;
 }
 
-// The user's choices for each enabled permission (see GET /api/optional-permissions).
+// The current version of the optional permissions and the user's choice for each enabled one
+// (see GET /api/optional-permissions). Any admin change publishes a new version and resets every choice.
 let optional = null;
-// "Decide later" skips the review screen for the permissions it showed, until the next page load. Choices stay
-// as they are (undecided = off). A permission added or changed after that brings the screen back.
-const postponed = new Set();
-const reviewKey = (p) => `${p.id}@${p.revision}`;
-const optionalReviewPending = () => Boolean(optional?.some((p) => !p.decided && !postponed.has(reviewKey(p))));
+let optionalVersion = null;
+// "Decide later" skips the review screen for this version until the next page load. Choices stay as they are
+// (undecided = off). A new version after that brings the screen back.
+let postponedVersion = null;
+const optionalReviewPending = () => postponedVersion !== optionalVersion && Boolean(optional?.some((p) => !p.decided));
 
 async function loadOptional() {
   const { ok, body } = await api('/optional-permissions');
-  if (ok) optional = body;
+  if (ok) ({ permissions: optional, version: optionalVersion } = body);
   else $('optional-status').textContent = `Could not load: ${body.error}`;
 }
 
-// Saves one choice for the revision the user saw. A 409 means an admin changed it meanwhile: reload,
-// so the user sees the new text (and the review screen asks again).
+// Saves one choice for the version the user saw. A 409 means an admin changed the permissions meanwhile:
+// reload, so the user sees the new version (and the review screen asks again).
 async function saveChoice(p, granted) {
-  const res = await api(`/optional-permissions/${encodeURIComponent(p.id)}`, { method: 'PUT', body: { granted, revision: p.revision } });
+  const res = await api(`/optional-permissions/${encodeURIComponent(p.id)}`, { method: 'PUT', body: { granted, version: optionalVersion } });
   if (res.status === 409) await loadOptional();
   return res;
 }
 
-const badge = (p) => (p.decided ? null : p.changed ? 'Changed' : 'New');
+// How it differs from the previous version, so users can see what's new.
+const badge = (p) => ({ new: 'New', changed: 'Changed' })[p.change] ?? null;
 
 function withBadge(p) {
   const cell = permissionCell(p);
@@ -195,7 +197,7 @@ function renderOptionalTable() {
         render();
         return ($('optional-status').textContent = `Error: ${res.body.error}`);
       }
-      Object.assign(p, { granted: toggle.checked, decided: true, changed: false });
+      Object.assign(p, { granted: toggle.checked, decided: true });
       render();
       $('optional-status').textContent = `${p.label}: ${toggle.checked ? 'allowed' : 'not allowed'}`;
     });
@@ -207,13 +209,15 @@ function renderOptionalTable() {
   $('optional-permissions').replaceChildren(...rows);
 }
 
-// Shown after login when a permission is new or changed since the user last chose. Nothing is blocked:
-// the user can decide later, and everything they don't allow stays off.
+// Shown after login when the user hasn't chosen in the current version: on first use, and after every admin
+// change. It lists every permission, since all choices were reset. Nothing is blocked: the user can decide
+// later, and everything they don't allow stays off. Boxes start unticked (only choices already made in this
+// version are shown ticked): pre-ticked boxes aren't valid consent.
 function renderOptionalReview() {
-  const rows = optional.filter((p) => !p.decided).map((p) => {
+  const rows = optional.map((p) => {
     const tr = document.createElement('tr');
     tr.append(withBadge(p));
-    const toggle = Object.assign(document.createElement('input'), { type: 'checkbox', checked: false, name: p.id });
+    const toggle = Object.assign(document.createElement('input'), { type: 'checkbox', checked: p.decided && p.granted, name: p.id });
     toggle.setAttribute('aria-label', p.label);
     const label = document.createElement('label');
     label.append(toggle, ' Allow');
@@ -224,7 +228,7 @@ function renderOptionalReview() {
 }
 
 $('optional-review-save').addEventListener('click', async () => {
-  for (const p of optional.filter((p) => !p.decided)) {
+  for (const p of optional) {
     const granted = $('optional-review-list').querySelector(`input[name="${CSS.escape(p.id)}"]`).checked;
     const res = await saveChoice(p, granted);
     if (!res.ok) {
@@ -239,7 +243,7 @@ $('optional-review-save').addEventListener('click', async () => {
   render();
 });
 $('optional-review-later').addEventListener('click', () => {
-  for (const p of optional.filter((p) => !p.decided)) postponed.add(reviewKey(p));
+  postponedVersion = optionalVersion;
   render();
 });
 
@@ -295,6 +299,8 @@ $('create-user').addEventListener('submit', async (e) => {
   loadUsers();
 });
 
+const RESET_WARNING = "This publishes a new version: everyone's choices for all optional permissions are reset and every user is asked to review them all again.";
+
 // After an admin change: the admin is a user too, so a new or changed permission asks them again.
 async function refreshOptional() {
   await loadOptional();
@@ -315,11 +321,11 @@ function editPermission(tr, p) {
   cancel.addEventListener('click', loadOptionalAdmin);
   save.addEventListener('click', async () => {
     if (label.value.trim() === p.label && description.value.trim() === p.description) return loadOptionalAdmin();
-    if (!confirm(`Save the new text? Everyone's choice for "${p.label}" is reset and they'll be asked again.`)) return;
+    if (!confirm(`Save the new text? ${RESET_WARNING}`)) return;
     const res = await api(`/admin/optional-permissions/${encodeURIComponent(p.id)}`, {
       method: 'PUT', body: { label: label.value, description: description.value },
     });
-    $('optional-admin-status').textContent = res.ok ? `Updated ${res.body.label} (revision ${res.body.revision}). Everyone will be asked again.` : `Error: ${res.body.error}`;
+    $('optional-admin-status').textContent = res.ok ? `Published version ${res.body.version}. Everyone will be asked to review again.` : `Error: ${res.body.error}`;
     refreshOptional();
   });
 }
@@ -333,12 +339,12 @@ async function loadOptionalAdmin() {
     b.addEventListener('click', onClick);
     return b;
   };
-  const rows = body.map((p) => {
+  const by = body.publishedBy ? ` by ${body.publishedBy}` : '';
+  $('optional-admin-version').textContent = `Current version: ${body.version}, published ${new Date(body.publishedAt).toLocaleString()}${by}.`;
+  const rows = body.permissions.map((p) => {
     const tr = document.createElement('tr');
     if (!p.enabled) tr.className = 'disabled';
-    const info = permissionCell(p);
-    info.append(Object.assign(document.createElement('div'), { className: 'hint', textContent: `Revision ${p.revision}` }));
-    tr.append(info);
+    tr.append(permissionCell(p));
     tr.insertCell().textContent = p.enabled ? 'Enabled' : 'Disabled';
     tr.insertCell().textContent = p.grantedUsers.length
       ? `${p.grantedUsers.length}: ${p.grantedUsers.map((u) => u.username).join(', ')}`
@@ -349,18 +355,15 @@ async function loadOptionalAdmin() {
     actions.append(
       button('Edit', '', () => editPermission(tr, p)),
       button(p.enabled ? 'Disable' : 'Enable', 'secondary', async () => {
-        const question = p.enabled
-          ? `Disable "${p.label}"? Users won't see it and nobody counts as opted in while it's off.`
-          : `Enable "${p.label}" again? Everyone's earlier choice is reset and they'll be asked again.`;
-        if (!confirm(question)) return;
+        if (!confirm(`${p.enabled ? 'Disable' : 'Enable'} "${p.label}"? ${RESET_WARNING}`)) return;
         const res = await api(`/admin/optional-permissions/${encodeURIComponent(p.id)}`, { method: 'PUT', body: { enabled: !p.enabled } });
-        $('optional-admin-status').textContent = res.ok ? `${p.label} ${res.body.enabled ? 'enabled' : 'disabled'}` : `Error: ${res.body.error}`;
+        $('optional-admin-status').textContent = res.ok ? `${p.label} ${p.enabled ? 'disabled' : 'enabled'}: published version ${res.body.version}.` : `Error: ${res.body.error}`;
         refreshOptional();
       }),
       button('Delete', 'danger', async () => {
-        if (!confirm(`Delete "${p.label}"? Users won't see it anymore and nobody will count as opted in.`)) return;
+        if (!confirm(`Delete "${p.label}"? ${RESET_WARNING}`)) return;
         const res = await api(`/admin/optional-permissions/${encodeURIComponent(p.id)}`, { method: 'DELETE' });
-        $('optional-admin-status').textContent = res.ok ? `Deleted ${p.label}` : `Error: ${res.body.error}`;
+        $('optional-admin-status').textContent = res.ok ? `Deleted ${p.label}: published version ${res.body.version}.` : `Error: ${res.body.error}`;
         refreshOptional();
       }),
     );
@@ -372,9 +375,10 @@ async function loadOptionalAdmin() {
 $('add-permission').addEventListener('submit', async (e) => {
   e.preventDefault();
   const form = e.currentTarget;
+  if (!confirm(`Add "${form.label.value}"? ${RESET_WARNING}`)) return;
   const { ok, body } = await api('/admin/optional-permissions', { method: 'POST', body: Object.fromEntries(new FormData(form)) });
   if (!ok) return ($('optional-admin-status').textContent = `Error: ${body.error}`);
-  $('optional-admin-status').textContent = `Added ${body.label}. Everyone will be asked to choose.`;
+  $('optional-admin-status').textContent = `Added ${form.label.value}: published version ${body.version}. Everyone will be asked to review again.`;
   form.reset();
   refreshOptional();
 });

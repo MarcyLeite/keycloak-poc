@@ -28,8 +28,9 @@
 
       <section id="optional-review" hidden>
         <h2>Optional permissions</h2>
-        <p class="hint">These optional permissions are new or have changed since you last chose. Pick the ones you want
-          to allow. Saying no never limits what you can do in the app, and you can change your mind at any time.</p>
+        <p class="hint">Please review our optional permissions. Whenever they change, we ask you about all of them again.
+          Tick the ones you want to allow. Saying no never limits what you can do in the app, and you can change your
+          mind at any time.</p>
         <table>
           <thead><tr><th>Permission</th><th>Your choice</th></tr></thead>
           <tbody id="optional-review-list"></tbody>
@@ -66,7 +67,7 @@
 
         <h2>Optional permissions</h2>
         <p class="hint">Extra things you can agree to. They're off until you turn them on, you can change them at any time,
-          and saying no never limits what you can do in the app. If one changes, you're asked again.</p>
+          and saying no never limits what you can do in the app. If they change, you're asked about all of them again.</p>
         <table>
           <thead><tr><th>Permission</th><th>Allowed</th></tr></thead>
           <tbody id="optional-permissions"></tbody>
@@ -106,9 +107,10 @@
           </table>
 
           <h2>Admin · Optional permissions</h2>
-          <p class="hint">Adding a permission, editing its text or enabling it again resets everyone's choice for it: users
-            are asked again after login and count as not opted in until they choose. Disabling or deleting one hides it
-            from users and nobody counts as opted in; past choices stay on record.</p>
+          <p class="hint">Any change here (adding, editing, enabling, disabling or deleting) publishes a new version of all
+            optional permissions. Everyone's choices are reset: users count as not opted in to anything and are asked to
+            review them all again after login. Earlier versions and past choices stay on record.</p>
+          <p id="optional-admin-version" class="hint"></p>
           <form id="add-permission" class="form-grid">
             <input name="label" placeholder="Name, e.g. Event invitations" aria-label="Name" required />
             <input name="description" placeholder="What the user agrees to" aria-label="Description" required />

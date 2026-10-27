@@ -64,11 +64,11 @@ app.get('/api/optional-permissions', async (req, res) => {
 });
 
 app.put('/api/optional-permissions/:id', async (req, res) => {
-  const { granted, revision } = req.body ?? {};
-  if (typeof granted !== 'boolean' || !Number.isInteger(revision)) {
-    return res.status(400).json({ error: 'Body must be {"granted": true|false, "revision": <number>}' });
+  const { granted, version } = req.body ?? {};
+  if (typeof granted !== 'boolean' || !Number.isInteger(version)) {
+    return res.status(400).json({ error: 'Body must be {"granted": true|false, "version": <number>}' });
   }
-  const choice = await setChoice(req.user, req.params.id, granted, revision);
+  const choice = await setChoice(req.user, req.params.id, granted, version);
   console.log(`[optional-permission] ${req.user.username} turned ${granted ? 'on' : 'off'} ${req.params.id}`);
   res.json(choice);
 });
