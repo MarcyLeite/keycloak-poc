@@ -23,5 +23,36 @@
         "enabled": true
       }
     ]
+  },
+  {
+    "version": 2,
+    "publishedAt": "2026-10-27T22:40:51.098Z",
+    "publishedBy": "carol",
+    "permissions": [
+      {
+        "id": "product-updates",
+        "label": "Product update emails",
+        "description": "Emails about new features and changes to the app.",
+        "enabled": true
+      },
+      {
+        "id": "newsletter",
+        "label": "Monthly newsletter",
+        "description": "A monthly email with tips, news and events.",
+        "enabled": true
+      },
+      {
+        "id": "usage-analytics",
+        "label": "Usage analytics",
+        "description": "Share how you use the app, without your name, so we can improve it.",
+        "enabled": true
+      },
+      {
+        "id": "new",
+        "label": "New",
+        "description": "new",
+        "enabled": true
+      }
+    ]
   }
 ]
