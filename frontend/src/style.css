@@ -23,3 +23,9 @@ textarea { padding: .45rem; border: 1px solid #c4c9d4; border-radius: 6px; font:
 .terms-form button { align-self: flex-start; }
 .terms-form .hint { margin: 0; }
 td details .terms-text { margin: .5rem 0 0; }
+.badge { margin-left: .4rem; padding: .05rem .4rem; border-radius: 4px; background: #fff4d6; color: #7a4d00; font-size: .75rem; }
+tr.disabled td:not(.actions) { color: #8b93a3; }
+td.actions { white-space: nowrap; }
+td.actions button + button { margin-left: .3rem; }
+.edit-row { display: flex; gap: .4rem; flex-wrap: wrap; }
+.edit-row input { flex: 1 1 12rem; }

@@ -122,17 +122,25 @@ can do in the app.
 
 - **Users** turn each one on or off at any time under **Optional permissions**. All are off until the user turns
   them on (opt-in), the safe default for consent under GDPR-style rules.
-- **Admins** add and delete them in the **Admin · Optional permissions** panel, which also shows who is opted in
-  to each one, e.g. the people to send product update emails to. A new permission starts off for everyone.
-  Deleting one is a soft delete: it gets `deletedAt`/`deletedBy` in the file, users stop seeing it, and nobody
-  counts as opted in, but past choices stay on record. Ids are never reused.
+- **Asked again on change**: each permission has a `revision`, and a user's choice only counts for the revision
+  they saw. Adding a permission, editing its name or description, or enabling it again starts a new revision.
+  Everyone's choice for it is reset: they count as not opted in, and after login (after the license terms) the
+  app shows the new or changed permissions to choose from. Unlike the terms, users can **Decide later**; the
+  screen comes back on the next visit. The client sends the revision it showed, and the backend rejects it
+  (`409`) if the permission changed in the meantime. Earlier texts are kept in the permission's `history`.
+- **Admins** manage them in the **Admin · Optional permissions** panel: add, edit, enable/disable and delete,
+  and see who is opted in to each one, e.g. who to send product update emails to.
+  - **Disable** hides it from users and nobody counts as opted in, without resetting anything. Enabling it again
+    starts a new revision, so everyone is asked again.
+  - **Delete** is a soft delete: it gets `deletedAt`/`deletedBy` in the file, users stop seeing it, and nobody
+    counts as opted in, but past choices stay on record. Ids are never reused.
 - **Storage**: the list is `backend/optional-permissions.json` (tracked by git, like the terms). Every choice is
-  appended to `backend/logs/permission-choices.jsonl` as `{time, userId, username, permissionId, granted}`, so
-  you can always see when someone opted in or out.
+  appended to `backend/logs/permission-choices.jsonl` as `{time, userId, username, permissionId, revision, granted}`,
+  so you can always see who agreed to which text and when.
 - **Account deletion** turns off everything the user had opted in to before the account is deleted.
 
-To check one in code, e.g. before sending an email: `grantedUsers('product-updates')` in
-`backend/src/optionalPermissions.js` returns everyone opted in right now.
+To check one in code, e.g. before sending an email: `await grantedUsers('product-updates')` in
+`backend/src/optionalPermissions.js` returns everyone opted in to the current revision right now.
 
 These are different from the OAuth scopes below: scopes control what the app may do *with Keycloak's token*,
 and are asked for on Keycloak's consent screen.
@@ -221,7 +229,7 @@ require the current license terms to be accepted. Operands are `a` and `b` query
 | `GET /api/terms`           | any          | current terms and your last accepted version |
 | `POST /api/terms/accept`   | any          | accept the current terms: `{version}` |
 | `GET /api/optional-permissions` | any     | optional permissions and your choice for each |
-| `PUT /api/optional-permissions/:id` | any | turn one on or off: `{granted}` |
+| `PUT /api/optional-permissions/:id` | any | turn one on or off: `{granted, revision}` |
 | `GET /api/sum?a=2&b=8`     | `math-1`     | `10`     |
 | `GET /api/multiply?a=2&b=8`| `math-2`     | `16`     |
 | `GET /api/power?a=2&b=8`   | `math-3`     | `256`    |
@@ -232,6 +240,7 @@ require the current license terms to be accepted. Operands are `a` and `b` query
 | `POST /api/admin/terms`    | `admin`      | publish a new version: `{title, text}` (plain text) |
 | `GET /api/admin/optional-permissions` | `admin` | optional permissions with who is opted in |
 | `POST /api/admin/optional-permissions` | `admin` | add one: `{label, description}` |
+| `PUT /api/admin/optional-permissions/:id` | `admin` | edit or enable/disable: `{label?, description?, enabled?}` |
 | `DELETE /api/admin/optional-permissions/:id` | `admin` | delete one (soft delete) |
 | `POST /api/email/send`     | scope `send-email`    | simulated email to the user |
 | `GET /api/contacts`        | scope `read-contacts` | fake contact list |

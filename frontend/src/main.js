@@ -87,6 +87,7 @@ $('terms-accept').addEventListener('click', async () => {
     return;
   }
   terms.accepted = body;
+  await loadOptional();
   render();
 });
 $('terms-decline').addEventListener('click', () => keycloak.logout({ redirectUri: window.location.origin }));
@@ -152,29 +153,95 @@ function permissionCell(p) {
   return cell;
 }
 
-async function loadOptionalPermissions() {
-  const { ok, body } = await api('/optional-permissions');
-  if (!ok) return ($('optional-status').textContent = `Could not load: ${body.error}`);
+// The user's choices for each enabled permission (see GET /api/optional-permissions).
+let optional = null;
+// "Decide later" skips the review screen for the permissions it showed, until the next page load. Choices stay
+// as they are (undecided = off). A permission added or changed after that brings the screen back.
+const postponed = new Set();
+const reviewKey = (p) => `${p.id}@${p.revision}`;
+const optionalReviewPending = () => Boolean(optional?.some((p) => !p.decided && !postponed.has(reviewKey(p))));
 
-  const rows = body.map((p) => {
+async function loadOptional() {
+  const { ok, body } = await api('/optional-permissions');
+  if (ok) optional = body;
+  else $('optional-status').textContent = `Could not load: ${body.error}`;
+}
+
+// Saves one choice for the revision the user saw. A 409 means an admin changed it meanwhile: reload,
+// so the user sees the new text (and the review screen asks again).
+async function saveChoice(p, granted) {
+  const res = await api(`/optional-permissions/${encodeURIComponent(p.id)}`, { method: 'PUT', body: { granted, revision: p.revision } });
+  if (res.status === 409) await loadOptional();
+  return res;
+}
+
+const badge = (p) => (p.decided ? null : p.changed ? 'Changed' : 'New');
+
+function withBadge(p) {
+  const cell = permissionCell(p);
+  if (badge(p)) cell.querySelector('strong').after(Object.assign(document.createElement('span'), { className: 'badge', textContent: badge(p) }));
+  return cell;
+}
+
+function renderOptionalTable() {
+  const rows = (optional ?? []).map((p) => {
     const tr = document.createElement('tr');
-    tr.append(permissionCell(p));
+    tr.append(withBadge(p));
     const toggle = Object.assign(document.createElement('input'), { type: 'checkbox', checked: p.granted });
     toggle.setAttribute('aria-label', p.label);
     toggle.addEventListener('change', async () => {
-      const res = await api(`/optional-permissions/${encodeURIComponent(p.id)}`, { method: 'PUT', body: { granted: toggle.checked } });
+      const res = await saveChoice(p, toggle.checked);
       if (!res.ok) {
-        toggle.checked = !toggle.checked;
+        render();
         return ($('optional-status').textContent = `Error: ${res.body.error}`);
       }
+      Object.assign(p, { granted: toggle.checked, decided: true, changed: false });
+      render();
       $('optional-status').textContent = `${p.label}: ${toggle.checked ? 'allowed' : 'not allowed'}`;
-      if (!$('admin').hidden) loadOptionalAdmin(); // keep the opted-in counts current
     });
-    tr.insertCell().append(toggle);
+    const cell = tr.insertCell();
+    cell.append(toggle);
+    if (!p.decided) cell.append(' not decided yet');
     return tr;
   });
   $('optional-permissions').replaceChildren(...rows);
 }
+
+// Shown after login when a permission is new or changed since the user last chose. Nothing is blocked:
+// the user can decide later, and everything they don't allow stays off.
+function renderOptionalReview() {
+  const rows = optional.filter((p) => !p.decided).map((p) => {
+    const tr = document.createElement('tr');
+    tr.append(withBadge(p));
+    const toggle = Object.assign(document.createElement('input'), { type: 'checkbox', checked: false, name: p.id });
+    toggle.setAttribute('aria-label', p.label);
+    const label = document.createElement('label');
+    label.append(toggle, ' Allow');
+    tr.insertCell().append(label);
+    return tr;
+  });
+  $('optional-review-list').replaceChildren(...rows);
+}
+
+$('optional-review-save').addEventListener('click', async () => {
+  for (const p of optional.filter((p) => !p.decided)) {
+    const granted = $('optional-review-list').querySelector(`input[name="${CSS.escape(p.id)}"]`).checked;
+    const res = await saveChoice(p, granted);
+    if (!res.ok) {
+      await loadOptional();
+      render();
+      $('optional-review-error').textContent = `Error: ${res.body.error}`;
+      return;
+    }
+  }
+  $('optional-review-error').textContent = '';
+  await loadOptional();
+  render();
+});
+$('optional-review-later').addEventListener('click', () => {
+  for (const p of optional.filter((p) => !p.decided)) postponed.add(reviewKey(p));
+  render();
+});
 
 // --- Admin -----------------------------------------------------------------
 
@@ -228,25 +295,75 @@ $('create-user').addEventListener('submit', async (e) => {
   loadUsers();
 });
 
+// After an admin change: the admin is a user too, so a new or changed permission asks them again.
+async function refreshOptional() {
+  await loadOptional();
+  render();
+}
+
+function editPermission(tr, p) {
+  const label = Object.assign(document.createElement('input'), { value: p.label, ariaLabel: 'Name' });
+  const description = Object.assign(document.createElement('input'), { value: p.description, ariaLabel: 'Description' });
+  const save = Object.assign(document.createElement('button'), { textContent: 'Save' });
+  const cancel = Object.assign(document.createElement('button'), { textContent: 'Cancel', className: 'secondary' });
+  const fields = Object.assign(document.createElement('div'), { className: 'edit-row' });
+  fields.append(label, description, save, cancel);
+  const cell = document.createElement('td');
+  cell.colSpan = 4;
+  cell.append(fields);
+  tr.replaceChildren(cell);
+  cancel.addEventListener('click', loadOptionalAdmin);
+  save.addEventListener('click', async () => {
+    if (label.value.trim() === p.label && description.value.trim() === p.description) return loadOptionalAdmin();
+    if (!confirm(`Save the new text? Everyone's choice for "${p.label}" is reset and they'll be asked again.`)) return;
+    const res = await api(`/admin/optional-permissions/${encodeURIComponent(p.id)}`, {
+      method: 'PUT', body: { label: label.value, description: description.value },
+    });
+    $('optional-admin-status').textContent = res.ok ? `Updated ${res.body.label} (revision ${res.body.revision}). Everyone will be asked again.` : `Error: ${res.body.error}`;
+    refreshOptional();
+  });
+}
+
 async function loadOptionalAdmin() {
   const { ok, body } = await api('/admin/optional-permissions');
   if (!ok) return ($('optional-admin-status').textContent = `Could not load: ${body.error}`);
 
+  const button = (text, className, onClick) => {
+    const b = Object.assign(document.createElement('button'), { textContent: text, className });
+    b.addEventListener('click', onClick);
+    return b;
+  };
   const rows = body.map((p) => {
     const tr = document.createElement('tr');
-    tr.append(permissionCell(p));
+    if (!p.enabled) tr.className = 'disabled';
+    const info = permissionCell(p);
+    info.append(Object.assign(document.createElement('div'), { className: 'hint', textContent: `Revision ${p.revision}` }));
+    tr.append(info);
+    tr.insertCell().textContent = p.enabled ? 'Enabled' : 'Disabled';
     tr.insertCell().textContent = p.grantedUsers.length
       ? `${p.grantedUsers.length}: ${p.grantedUsers.map((u) => u.username).join(', ')}`
       : '0';
-    const remove = Object.assign(document.createElement('button'), { textContent: 'Delete', className: 'danger' });
-    remove.addEventListener('click', async () => {
-      if (!confirm(`Delete "${p.label}"? Users won't see it anymore and nobody will count as opted in.`)) return;
-      const res = await api(`/admin/optional-permissions/${encodeURIComponent(p.id)}`, { method: 'DELETE' });
-      $('optional-admin-status').textContent = res.ok ? `Deleted ${p.label}` : `Error: ${res.body.error}`;
-      loadOptionalAdmin();
-      loadOptionalPermissions();
-    });
-    tr.insertCell().append(remove);
+
+    const actions = tr.insertCell();
+    actions.className = 'actions';
+    actions.append(
+      button('Edit', '', () => editPermission(tr, p)),
+      button(p.enabled ? 'Disable' : 'Enable', 'secondary', async () => {
+        const question = p.enabled
+          ? `Disable "${p.label}"? Users won't see it and nobody counts as opted in while it's off.`
+          : `Enable "${p.label}" again? Everyone's earlier choice is reset and they'll be asked again.`;
+        if (!confirm(question)) return;
+        const res = await api(`/admin/optional-permissions/${encodeURIComponent(p.id)}`, { method: 'PUT', body: { enabled: !p.enabled } });
+        $('optional-admin-status').textContent = res.ok ? `${p.label} ${res.body.enabled ? 'enabled' : 'disabled'}` : `Error: ${res.body.error}`;
+        refreshOptional();
+      }),
+      button('Delete', 'danger', async () => {
+        if (!confirm(`Delete "${p.label}"? Users won't see it anymore and nobody will count as opted in.`)) return;
+        const res = await api(`/admin/optional-permissions/${encodeURIComponent(p.id)}`, { method: 'DELETE' });
+        $('optional-admin-status').textContent = res.ok ? `Deleted ${p.label}` : `Error: ${res.body.error}`;
+        refreshOptional();
+      }),
+    );
     return tr;
   });
   $('optional-admin').replaceChildren(...rows);
@@ -257,10 +374,9 @@ $('add-permission').addEventListener('submit', async (e) => {
   const form = e.currentTarget;
   const { ok, body } = await api('/admin/optional-permissions', { method: 'POST', body: Object.fromEntries(new FormData(form)) });
   if (!ok) return ($('optional-admin-status').textContent = `Error: ${body.error}`);
-  $('optional-admin-status').textContent = `Added ${body.label}. It's off for everyone until they turn it on.`;
+  $('optional-admin-status').textContent = `Added ${body.label}. Everyone will be asked to choose.`;
   form.reset();
-  loadOptionalAdmin();
-  loadOptionalPermissions();
+  refreshOptional();
 });
 
 // Plain text for the publish form: one paragraph per <p>, blank lines between them.
@@ -315,9 +431,13 @@ $('publish-terms').addEventListener('submit', async (e) => {
 function render() {
   $('logged-out').hidden = keycloak.authenticated;
   $('terms-screen').hidden = !keycloak.authenticated || !termsPending();
-  $('logged-in').hidden = !keycloak.authenticated || termsPending();
+  // Terms first (required), then any new or changed optional permissions (skippable), then the app.
+  const reviewing = !termsPending() && optionalReviewPending();
+  $('optional-review').hidden = !keycloak.authenticated || !reviewing;
+  $('logged-in').hidden = !keycloak.authenticated || termsPending() || reviewing;
   if (!keycloak.authenticated) return;
   if (termsPending()) return renderTerms();
+  if (reviewing) return renderOptionalReview();
 
   const claims = keycloak.tokenParsed;
   $('username').textContent = claims.preferred_username;
@@ -328,7 +448,7 @@ function render() {
     ? `License terms v${terms.accepted.version} accepted on ${new Date(terms.accepted.time).toLocaleString()}`
     : '';
   renderPermissions();
-  loadOptionalPermissions();
+  renderOptionalTable();
 
   // Only a UI hint: the backend enforces the admin role on every /api/admin call.
   const isAdmin = roles.includes('admin');
@@ -377,5 +497,8 @@ try {
   }
   console.error('Keycloak init failed', err);
 }
-if (keycloak.authenticated) await loadTerms();
+if (keycloak.authenticated) {
+  await loadTerms();
+  if (!termsPending()) await loadOptional();
+}
 render();

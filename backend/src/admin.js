@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { TIER_GROUPS, createUser, listUsers, setUserGroup } from './keycloakAdmin.js';
 import { acceptanceOf, listTerms, publishTerms } from './terms.js';
-import { createPermission, deletePermission, grantedUsers, listPermissions } from './optionalPermissions.js';
+import { createPermission, deletePermission, grantedUsers, listPermissions, updatePermission } from './optionalPermissions.js';
 
 // Mounted behind authenticate + requireRole('admin').
 export const adminRouter = Router();
@@ -57,13 +57,14 @@ adminRouter.post('/terms', async (req, res) => {
   res.status(201).json(entry);
 });
 
-// Optional permissions with who is opted in to each, e.g. the recipients of product update emails.
+// Optional permissions (enabled and disabled) with who is opted in to each, e.g. the recipients of
+// product update emails.
 adminRouter.get('/optional-permissions', async (_req, res) => {
   const permissions = await listPermissions();
-  res.json(permissions.map((p) => ({ ...p, grantedUsers: grantedUsers(p.id) })));
+  res.json(await Promise.all(permissions.map(async (p) => ({ ...p, grantedUsers: await grantedUsers(p.id) }))));
 });
 
-// New permissions start off for everyone: users opt in themselves.
+// New permissions start off for everyone, and users are asked to choose.
 adminRouter.post('/optional-permissions', async (req, res) => {
   const { label, description } = req.body ?? {};
   if (typeof label !== 'string' || !label.trim() || typeof description !== 'string' || !description.trim()) {
@@ -72,6 +73,24 @@ adminRouter.post('/optional-permissions', async (req, res) => {
   const permission = await createPermission({ label: label.trim(), description: description.trim() }, req.user.username);
   console.log(`[admin] ${req.user.username} added optional permission ${permission.id}`);
   res.status(201).json(permission);
+});
+
+// Edit name/description or enable/disable. A new text, or enabling it again, asks every user again.
+adminRouter.put('/optional-permissions/:id', async (req, res) => {
+  const { label, description, enabled } = req.body ?? {};
+  const changes = {};
+  for (const [field, value] of Object.entries({ label, description })) {
+    if (value === undefined) continue;
+    if (typeof value !== 'string' || !value.trim()) return res.status(400).json({ error: `${field} can't be empty` });
+    changes[field] = value.trim();
+  }
+  if (enabled !== undefined) {
+    if (typeof enabled !== 'boolean') return res.status(400).json({ error: 'enabled must be true or false' });
+    changes.enabled = enabled;
+  }
+  const permission = await updatePermission(req.params.id, changes, req.user.username);
+  console.log(`[admin] ${req.user.username} updated optional permission ${permission.id} (revision ${permission.revision}, ${permission.enabled ? 'enabled' : 'disabled'})`);
+  res.json(permission);
 });
 
 // Soft delete: users stop seeing it and nobody counts as opted in, but past choices stay on record.
