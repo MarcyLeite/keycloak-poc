@@ -38,11 +38,14 @@ Logs: `docker compose logs -f backend frontend`.
 compose.yaml                 nginx, Keycloak, backend, frontend
 nginx/default.conf           routes /, /api/, /auth/ to the right container
 keycloak/seed.mjs            realm setup through the Keycloak Admin API
+keycloak/replay-deletions.mjs re-deletes logged account deletions after a backup restore
 keycloak/themes/poc/         branded login theme (CSS + license terms text)
 backend/src/server.js        Express app: math endpoints, error handling
 backend/src/auth.js          JWT validation (JWKS, iss, aud) and role checks
 backend/src/admin.js         /api/admin/* routes (admin role only)
 backend/src/keycloakAdmin.js Keycloak Admin API client (service account)
+backend/src/usageLog.js      per-request usage log (logs/usage.jsonl)
+backend/src/deletionLog.js   deleted accounts log (logs/deletions.jsonl)
 frontend/src/main.js         keycloak-js login, calculator, admin panel
 ```
 
@@ -141,6 +144,33 @@ The browser never calls the Keycloak Admin API itself:
 
 Backend env (set in `compose.yaml`): `KEYCLOAK_ISSUER`, `KEYCLOAK_JWKS_URL`, `KEYCLOAK_URL`, `KEYCLOAK_REALM`, `KEYCLOAK_CLIENT_ID`, `KEYCLOAK_CLIENT_SECRET`.
 
+## Logs and account deletion
+
+The backend writes two JSON-lines files (one JSON object per line) under `backend/logs/`, which is git-ignored.
+The container runs as root, so the files belong to root on the host. Clear them with
+`docker compose exec backend rm logs/<file>`.
+
+- **`usage.jsonl`**: one line per `/api` request, written after the response is sent, so rejected calls (401/403)
+  are logged too: time, user, method, path, query, status and duration. Request bodies are not logged, because
+  admin requests can carry passwords. Path: `USAGE_LOG_FILE`.
+- **`deletions.jsonl`**: one line per deleted account: time, user ID (`sub`), username and who deleted it.
+  Path: `DELETION_LOG_FILE`.
+
+Any user can delete their own account with **Delete my account** (`DELETE /api/me`). The backend writes to the
+deletion log first, then deletes the user through the Admin API. Keycloak hard-deletes the user, along with their
+credentials, groups, consents and sessions. An access token they already have is still accepted until it expires
+(5 minutes).
+
+**Restoring a backup brings deleted users back.** The deletion log is kept outside Keycloak's database for that
+reason. After a restore, and before letting users back in, run:
+
+```bash
+node keycloak/replay-deletions.mjs               # reads backend/logs/deletions.jsonl
+```
+
+Running it twice is safe: users that are already gone are skipped. Re-running `seed.mjs` recreates `alice`, `bob`
+and `carol` even if they deleted their accounts.
+
 ## API
 
 All endpoints except `/api/health` require a valid token. Operands are `a` and `b` query params.
@@ -149,6 +179,7 @@ All endpoints except `/api/health` require a valid token. Operands are `a` and `
 |----------------------------|--------------|----------|
 | `GET /api/health`          | —            | `ok`     |
 | `GET /api/me`              | any          | user, roles, granted scopes |
+| `DELETE /api/me`           | any          | delete your own account |
 | `GET /api/sum?a=2&b=8`     | `math-1`     | `10`     |
 | `GET /api/multiply?a=2&b=8`| `math-2`     | `16`     |
 | `GET /api/power?a=2&b=8`   | `math-3`     | `256`    |

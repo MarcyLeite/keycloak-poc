@@ -110,6 +110,11 @@ export async function setUserGroup(userId, groupName) {
   await api('PUT', `/users/${userId}/groups/${target.id}`);
 }
 
+// Hard delete: Keycloak also drops the user's credentials, groups, consents and sessions.
+export async function deleteUser(userId) {
+  await api('DELETE', `/users/${userId}`);
+}
+
 export async function createUser({ username, email, firstName, lastName, password, group }) {
   await api('POST', '/users', { username, email, firstName, lastName, enabled: true, emailVerified: true });
   const [user] = await api('GET', `/users?exact=true&username=${encodeURIComponent(username)}`);

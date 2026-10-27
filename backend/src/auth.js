@@ -17,6 +17,7 @@ export async function authenticate(req, res, next) {
   try {
     const { payload } = await jwtVerify(token, jwks, { issuer: ISSUER, audience: AUDIENCE });
     req.user = {
+      id: payload.sub,
       username: payload.preferred_username,
       email: payload.email,
       roles: payload.realm_access?.roles ?? [],

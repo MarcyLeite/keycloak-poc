@@ -190,6 +190,16 @@ function render() {
   }
 }
 
+$('delete-account').addEventListener('click', async () => {
+  if (!confirm(`Delete the account "${keycloak.tokenParsed.preferred_username}"? This can't be undone.`)) return;
+  const { ok, body } = await api('/me', { method: 'DELETE' });
+  if (!ok) return ($('delete-status').textContent = `Error: ${body.error}`);
+  // The Keycloak session was deleted with the user, so only the local tokens are left to drop.
+  keycloak.clearToken();
+  saveScopes([]);
+  render();
+  $('login-error').textContent = 'Your account was deleted.';
+});
 $('login').addEventListener('click', () => keycloak.login({ scope: scopeParam(savedScopes()) }));
 $('account').addEventListener('click', () => keycloak.accountManagement());
 $('logout').addEventListener('click', () => keycloak.logout({ redirectUri: window.location.origin }));

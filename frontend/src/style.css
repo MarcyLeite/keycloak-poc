@@ -11,5 +11,7 @@ pre { background: #fff; border: 1px solid #dde1e8; border-radius: 6px; padding: 
 table { width: 100%; border-collapse: collapse; margin-top: .5rem; background: #fff; }
 th, td { text-align: left; padding: .45rem .6rem; border-bottom: 1px solid #dde1e8; }
 .error { color: #b42318; }
+button.danger { background: #b42318; border-color: #b42318; }
+button.danger:hover { background: #912018; }
 td button { padding: .25rem .6rem; font-size: .85rem; }
 #account { margin-top: .5rem; }

@@ -1,7 +1,8 @@
 import express from 'express';
 import { authenticate, requireRole, requireScope } from './auth.js';
 import { adminRouter } from './admin.js';
-import { KeycloakError } from './keycloakAdmin.js';
+import { KeycloakError, deleteUser } from './keycloakAdmin.js';
+import { logDeletion } from './deletionLog.js';
 import { usageLog } from './usageLog.js';
 
 const PORT = process.env.PORT ?? 3000;
@@ -24,6 +25,15 @@ app.get('/api/health', (_req, res) => res.json({ status: 'ok' }));
 app.use('/api', usageLog, authenticate);
 
 app.get('/api/me', (req, res) => res.json(req.user));
+
+// The user deletes their own account. It is written to the deletion log first, so a deletion is never
+// lost: if the Keycloak call fails, or a backup is restored later, keycloak/replay-deletions.mjs redoes it.
+app.delete('/api/me', async (req, res) => {
+  await logDeletion({ userId: req.user.id, username: req.user.username, deletedBy: req.user.username });
+  await deleteUser(req.user.id);
+  console.log(`[account] ${req.user.username} deleted their account`);
+  res.json({ deleted: true, id: req.user.id });
+});
 
 app.get('/api/sum', requireRole('math-1'), (req, res) => {
   const ops = parseOperands(req, res);
