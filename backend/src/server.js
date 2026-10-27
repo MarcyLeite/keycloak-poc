@@ -5,6 +5,7 @@ import { KeycloakError, deleteUser } from './keycloakAdmin.js';
 import { logDeletion } from './deletionLog.js';
 import { usageLog } from './usageLog.js';
 import { acceptTerms, acceptanceOf, currentTerms, requireCurrentTerms } from './terms.js';
+import { PermissionError, permissionsFor, revokeAll, setChoice } from './optionalPermissions.js';
 
 const PORT = process.env.PORT ?? 3000;
 const app = express();
@@ -31,6 +32,7 @@ app.get('/api/me', (req, res) => res.json(req.user));
 // lost: if the Keycloak call fails, or a backup is restored later, keycloak/replay-deletions.mjs redoes it.
 app.delete('/api/me', async (req, res) => {
   await logDeletion({ userId: req.user.id, username: req.user.username, deletedBy: req.user.username });
+  await revokeAll(req.user);
   await deleteUser(req.user.id);
   console.log(`[account] ${req.user.username} deleted their account`);
   res.json({ deleted: true, id: req.user.id });
@@ -55,6 +57,19 @@ app.post('/api/terms/accept', async (req, res) => {
 // Everything below needs the current terms accepted. /api/me and /api/terms stay open so the user
 // can see and accept the terms, or delete their account without accepting.
 app.use('/api', requireCurrentTerms);
+
+// Optional permissions: the user's own choices. Turning one off never blocks anything.
+app.get('/api/optional-permissions', async (req, res) => {
+  res.json(await permissionsFor(req.user.id));
+});
+
+app.put('/api/optional-permissions/:id', async (req, res) => {
+  const granted = req.body?.granted;
+  if (typeof granted !== 'boolean') return res.status(400).json({ error: 'Body must be {"granted": true|false}' });
+  const choice = await setChoice(req.user, req.params.id, granted);
+  console.log(`[optional-permission] ${req.user.username} turned ${granted ? 'on' : 'off'} ${req.params.id}`);
+  res.json(choice);
+});
 
 app.get('/api/sum', requireRole('math-1'), (req, res) => {
   const ops = parseOperands(req, res);
@@ -91,7 +106,7 @@ app.use('/api/admin', requireRole('admin'), adminRouter);
 
 // Express 5 forwards rejected promises from async handlers here.
 app.use((err, _req, res, _next) => {
-  if (err instanceof KeycloakError) return res.status(err.status).json({ error: err.message });
+  if (err instanceof KeycloakError || err instanceof PermissionError) return res.status(err.status).json({ error: err.message });
   if (err.status >= 400 && err.status < 500) return res.status(err.status).json({ error: err.message }); // e.g. bad JSON
   console.error(err);
   res.status(500).json({ error: 'Internal server error' });

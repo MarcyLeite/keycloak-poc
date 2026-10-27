@@ -141,6 +141,41 @@ function renderPermissions() {
   $('permissions').replaceChildren(...rows);
 }
 
+// --- Optional permissions --------------------------------------------------
+
+// The label and description shown for a permission, in both the user's and the admin's tables.
+function permissionCell(p) {
+  const cell = document.createElement('td');
+  const label = Object.assign(document.createElement('strong'), { textContent: p.label });
+  const description = Object.assign(document.createElement('div'), { className: 'hint', textContent: p.description });
+  cell.append(label, description);
+  return cell;
+}
+
+async function loadOptionalPermissions() {
+  const { ok, body } = await api('/optional-permissions');
+  if (!ok) return ($('optional-status').textContent = `Could not load: ${body.error}`);
+
+  const rows = body.map((p) => {
+    const tr = document.createElement('tr');
+    tr.append(permissionCell(p));
+    const toggle = Object.assign(document.createElement('input'), { type: 'checkbox', checked: p.granted });
+    toggle.setAttribute('aria-label', p.label);
+    toggle.addEventListener('change', async () => {
+      const res = await api(`/optional-permissions/${encodeURIComponent(p.id)}`, { method: 'PUT', body: { granted: toggle.checked } });
+      if (!res.ok) {
+        toggle.checked = !toggle.checked;
+        return ($('optional-status').textContent = `Error: ${res.body.error}`);
+      }
+      $('optional-status').textContent = `${p.label}: ${toggle.checked ? 'allowed' : 'not allowed'}`;
+      if (!$('admin').hidden) loadOptionalAdmin(); // keep the opted-in counts current
+    });
+    tr.insertCell().append(toggle);
+    return tr;
+  });
+  $('optional-permissions').replaceChildren(...rows);
+}
+
 // --- Admin -----------------------------------------------------------------
 
 const setAdminStatus = (text) => ($('admin-status').textContent = text);
@@ -191,6 +226,41 @@ $('create-user').addEventListener('submit', async (e) => {
   setAdminStatus(`Created ${body.username} in ${body.group}`);
   form.reset();
   loadUsers();
+});
+
+async function loadOptionalAdmin() {
+  const { ok, body } = await api('/admin/optional-permissions');
+  if (!ok) return ($('optional-admin-status').textContent = `Could not load: ${body.error}`);
+
+  const rows = body.map((p) => {
+    const tr = document.createElement('tr');
+    tr.append(permissionCell(p));
+    tr.insertCell().textContent = p.grantedUsers.length
+      ? `${p.grantedUsers.length}: ${p.grantedUsers.map((u) => u.username).join(', ')}`
+      : '0';
+    const remove = Object.assign(document.createElement('button'), { textContent: 'Delete', className: 'danger' });
+    remove.addEventListener('click', async () => {
+      if (!confirm(`Delete "${p.label}"? Users won't see it anymore and nobody will count as opted in.`)) return;
+      const res = await api(`/admin/optional-permissions/${encodeURIComponent(p.id)}`, { method: 'DELETE' });
+      $('optional-admin-status').textContent = res.ok ? `Deleted ${p.label}` : `Error: ${res.body.error}`;
+      loadOptionalAdmin();
+      loadOptionalPermissions();
+    });
+    tr.insertCell().append(remove);
+    return tr;
+  });
+  $('optional-admin').replaceChildren(...rows);
+}
+
+$('add-permission').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const form = e.currentTarget;
+  const { ok, body } = await api('/admin/optional-permissions', { method: 'POST', body: Object.fromEntries(new FormData(form)) });
+  if (!ok) return ($('optional-admin-status').textContent = `Error: ${body.error}`);
+  $('optional-admin-status').textContent = `Added ${body.label}. It's off for everyone until they turn it on.`;
+  form.reset();
+  loadOptionalAdmin();
+  loadOptionalPermissions();
 });
 
 // Plain text for the publish form: one paragraph per <p>, blank lines between them.
@@ -258,6 +328,7 @@ function render() {
     ? `License terms v${terms.accepted.version} accepted on ${new Date(terms.accepted.time).toLocaleString()}`
     : '';
   renderPermissions();
+  loadOptionalPermissions();
 
   // Only a UI hint: the backend enforces the admin role on every /api/admin call.
   const isAdmin = roles.includes('admin');
@@ -266,6 +337,7 @@ function render() {
     $('create-user').group.replaceChildren(...GROUPS.map((g) => new Option(g, g)));
     loadUsers();
     loadTermsAdmin();
+    loadOptionalAdmin();
   }
 }
 

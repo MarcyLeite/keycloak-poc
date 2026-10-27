@@ -51,6 +51,15 @@
         <button id="account">Review or revoke in Keycloak account</button>
         <pre id="permission-result">—</pre>
 
+        <h2>Optional permissions</h2>
+        <p class="hint">Extra things you can agree to. They're off until you turn them on, you can change them at any time,
+          and saying no never limits what you can do in the app.</p>
+        <table>
+          <thead><tr><th>Permission</th><th>Allowed</th></tr></thead>
+          <tbody id="optional-permissions"></tbody>
+        </table>
+        <p id="optional-status" class="hint"></p>
+
         <div id="admin" hidden>
           <h2>Admin · Users</h2>
           <form id="create-user" class="form-grid">
@@ -81,6 +90,20 @@
           <table>
             <thead><tr><th>Version</th><th>Published</th><th>By</th><th>Text</th></tr></thead>
             <tbody id="terms-versions"></tbody>
+          </table>
+
+          <h2>Admin · Optional permissions</h2>
+          <p class="hint">New permissions start off for everyone. Deleting one hides it from users and stops counting anyone
+            as opted in; past choices stay on record.</p>
+          <form id="add-permission" class="form-grid">
+            <input name="label" placeholder="Name, e.g. Event invitations" aria-label="Name" required />
+            <input name="description" placeholder="What the user agrees to" aria-label="Description" required />
+            <button type="submit">Add permission</button>
+          </form>
+          <p id="optional-admin-status" class="hint"></p>
+          <table>
+            <thead><tr><th>Permission</th><th>Opted in</th><th></th></tr></thead>
+            <tbody id="optional-admin"></tbody>
           </table>
         </div>
 

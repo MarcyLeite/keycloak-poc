@@ -48,6 +48,8 @@ backend/src/usageLog.js      per-request usage log (logs/usage.jsonl)
 backend/src/deletionLog.js   deleted accounts log (logs/deletions.jsonl)
 backend/src/terms.js         versioned license terms and acceptances
 backend/terms.json           every published version of the license terms
+backend/src/optionalPermissions.js optional permissions and users' choices
+backend/optional-permissions.json  the optional permissions admins manage
 frontend/src/main.js         keycloak-js login, calculator, admin panel
 ```
 
@@ -112,6 +114,29 @@ Terms and Conditions action is turned off).
 The admin panel shows the version each user accepted, and every published version with who published it.
 `backend/terms.json` is tracked by git, so versions published from the app show up as changes to commit.
 
+## Optional permissions
+
+Things a user can agree to without being required to, like **Product update emails**, the **Monthly newsletter**
+and **Usage analytics** (the three defaults). They don't block anything: saying no never limits what the user
+can do in the app.
+
+- **Users** turn each one on or off at any time under **Optional permissions**. All are off until the user turns
+  them on (opt-in), the safe default for consent under GDPR-style rules.
+- **Admins** add and delete them in the **Admin · Optional permissions** panel, which also shows who is opted in
+  to each one, e.g. the people to send product update emails to. A new permission starts off for everyone.
+  Deleting one is a soft delete: it gets `deletedAt`/`deletedBy` in the file, users stop seeing it, and nobody
+  counts as opted in, but past choices stay on record. Ids are never reused.
+- **Storage**: the list is `backend/optional-permissions.json` (tracked by git, like the terms). Every choice is
+  appended to `backend/logs/permission-choices.jsonl` as `{time, userId, username, permissionId, granted}`, so
+  you can always see when someone opted in or out.
+- **Account deletion** turns off everything the user had opted in to before the account is deleted.
+
+To check one in code, e.g. before sending an email: `grantedUsers('product-updates')` in
+`backend/src/optionalPermissions.js` returns everyone opted in right now.
+
+These are different from the OAuth scopes below: scopes control what the app may do *with Keycloak's token*,
+and are asked for on Keycloak's consent screen.
+
 ## Permissions (consent)
 
 `poc-frontend` has **Consent Required** on, so on first login Keycloak shows a consent screen listing what the
@@ -164,6 +189,7 @@ The container runs as root, so the files belong to root on the host. Clear them 
   are logged too: time, user, method, path, query, status and duration. Request bodies are not logged, because
   admin requests can carry passwords. Path: `USAGE_LOG_FILE`.
 - **`terms-acceptances.jsonl`**: see [License terms](#license-terms).
+- **`permission-choices.jsonl`**: see [Optional permissions](#optional-permissions).
 - **`deletions.jsonl`**: one line per deleted account: time, user ID (`sub`), username and who deleted it.
   Path: `DELETION_LOG_FILE`.
 
@@ -194,6 +220,8 @@ require the current license terms to be accepted. Operands are `a` and `b` query
 | `DELETE /api/me`           | any          | delete your own account |
 | `GET /api/terms`           | any          | current terms and your last accepted version |
 | `POST /api/terms/accept`   | any          | accept the current terms: `{version}` |
+| `GET /api/optional-permissions` | any     | optional permissions and your choice for each |
+| `PUT /api/optional-permissions/:id` | any | turn one on or off: `{granted}` |
 | `GET /api/sum?a=2&b=8`     | `math-1`     | `10`     |
 | `GET /api/multiply?a=2&b=8`| `math-2`     | `16`     |
 | `GET /api/power?a=2&b=8`   | `math-3`     | `256`    |
@@ -202,6 +230,9 @@ require the current license terms to be accepted. Operands are `a` and `b` query
 | `PUT /api/admin/users/:id/group` | `admin` | set group: `{group}` |
 | `GET /api/admin/terms`     | `admin`      | every published version of the terms, newest first |
 | `POST /api/admin/terms`    | `admin`      | publish a new version: `{title, text}` (plain text) |
+| `GET /api/admin/optional-permissions` | `admin` | optional permissions with who is opted in |
+| `POST /api/admin/optional-permissions` | `admin` | add one: `{label, description}` |
+| `DELETE /api/admin/optional-permissions/:id` | `admin` | delete one (soft delete) |
 | `POST /api/email/send`     | scope `send-email`    | simulated email to the user |
 | `GET /api/contacts`        | scope `read-contacts` | fake contact list |
 

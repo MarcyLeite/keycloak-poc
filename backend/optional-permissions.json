@@ -1,0 +1,23 @@
+[
+  {
+    "id": "product-updates",
+    "label": "Product update emails",
+    "description": "Emails about new features and changes to the app.",
+    "createdAt": "2026-10-27T00:00:00Z",
+    "createdBy": null
+  },
+  {
+    "id": "newsletter",
+    "label": "Monthly newsletter",
+    "description": "A monthly email with tips, news and events.",
+    "createdAt": "2026-10-27T00:00:00Z",
+    "createdBy": null
+  },
+  {
+    "id": "usage-analytics",
+    "label": "Usage analytics",
+    "description": "Share how you use the app, without your name, so we can improve it.",
+    "createdAt": "2026-10-27T00:00:00Z",
+    "createdBy": null
+  }
+]

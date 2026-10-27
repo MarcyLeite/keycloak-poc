@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { TIER_GROUPS, createUser, listUsers, setUserGroup } from './keycloakAdmin.js';
 import { acceptanceOf, listTerms, publishTerms } from './terms.js';
+import { createPermission, deletePermission, grantedUsers, listPermissions } from './optionalPermissions.js';
 
 // Mounted behind authenticate + requireRole('admin').
 export const adminRouter = Router();
@@ -54,4 +55,28 @@ adminRouter.post('/terms', async (req, res) => {
   const entry = await publishTerms({ title: title.trim(), text }, req.user.username);
   console.log(`[admin] ${req.user.username} published license terms version ${entry.version}`);
   res.status(201).json(entry);
+});
+
+// Optional permissions with who is opted in to each, e.g. the recipients of product update emails.
+adminRouter.get('/optional-permissions', async (_req, res) => {
+  const permissions = await listPermissions();
+  res.json(permissions.map((p) => ({ ...p, grantedUsers: grantedUsers(p.id) })));
+});
+
+// New permissions start off for everyone: users opt in themselves.
+adminRouter.post('/optional-permissions', async (req, res) => {
+  const { label, description } = req.body ?? {};
+  if (typeof label !== 'string' || !label.trim() || typeof description !== 'string' || !description.trim()) {
+    return res.status(400).json({ error: 'Missing fields: label and description are required' });
+  }
+  const permission = await createPermission({ label: label.trim(), description: description.trim() }, req.user.username);
+  console.log(`[admin] ${req.user.username} added optional permission ${permission.id}`);
+  res.status(201).json(permission);
+});
+
+// Soft delete: users stop seeing it and nobody counts as opted in, but past choices stay on record.
+adminRouter.delete('/optional-permissions/:id', async (req, res) => {
+  const permission = await deletePermission(req.params.id, req.user.username);
+  console.log(`[admin] ${req.user.username} deleted optional permission ${permission.id}`);
+  res.json(permission);
 });
