@@ -4,6 +4,7 @@ import { adminRouter } from './admin.js';
 import { KeycloakError, deleteUser } from './keycloakAdmin.js';
 import { logDeletion } from './deletionLog.js';
 import { usageLog } from './usageLog.js';
+import { acceptTerms, acceptanceOf, currentTerms, requireCurrentTerms } from './terms.js';
 
 const PORT = process.env.PORT ?? 3000;
 const app = express();
@@ -34,6 +35,26 @@ app.delete('/api/me', async (req, res) => {
   console.log(`[account] ${req.user.username} deleted their account`);
   res.json({ deleted: true, id: req.user.id });
 });
+
+// The terms screen: the current version and what this user accepted last.
+app.get('/api/terms', async (req, res) => {
+  res.json({ current: await currentTerms(), accepted: acceptanceOf(req.user.id) });
+});
+
+// The client sends the version it showed, so a user never accepts a text they didn't see.
+app.post('/api/terms/accept', async (req, res) => {
+  const { version } = await currentTerms();
+  if (req.body?.version !== version) {
+    return res.status(409).json({ error: `Terms changed: the current version is ${version}`, version });
+  }
+  const entry = await acceptTerms(req.user, version);
+  console.log(`[terms] ${req.user.username} accepted version ${version}`);
+  res.json(entry);
+});
+
+// Everything below needs the current terms accepted. /api/me and /api/terms stay open so the user
+// can see and accept the terms, or delete their account without accepting.
+app.use('/api', requireCurrentTerms);
 
 app.get('/api/sum', requireRole('math-1'), (req, res) => {
   const ops = parseOperands(req, res);

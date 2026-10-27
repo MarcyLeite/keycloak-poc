@@ -17,6 +17,15 @@
         <p class="hint">Test users: <code>alice / alice</code> (premium: all ops), <code>bob / bob</code> (basic: sum only), <code>carol / carol</code> (admin: all ops + user management)</p>
       </section>
 
+      <section id="terms-screen" hidden>
+        <h2 id="terms-title"></h2>
+        <p class="hint" id="terms-version"></p>
+        <div id="terms-text" class="terms-text"></div>
+        <p id="terms-error" class="error"></p>
+        <button id="terms-accept">Accept</button>
+        <button id="terms-decline" class="secondary">Decline and log out</button>
+      </section>
+
       <section id="logged-in" hidden>
         <p>Logged in as <strong id="username"></strong> — roles: <span id="roles"></span></p>
         <p class="hint" id="terms"></p>

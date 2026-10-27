@@ -11,7 +11,6 @@ export const TIER_GROUPS = ['basic', 'premium', 'admin'];
 
 // Client whose consents (granted scopes) the admin panel shows.
 const FRONTEND_CLIENT_ID = 'poc-frontend';
-const TERMS_ACTION = 'TERMS_AND_CONDITIONS';
 
 export class KeycloakError extends Error {
   constructor(status, message) {
@@ -65,9 +64,7 @@ async function api(method, path, body) {
 const tierOf = (groups) => groups.find((g) => TIER_GROUPS.includes(g.name))?.name ?? null;
 
 export async function listUsers() {
-  // The full representation includes requiredActions. The acceptance timestamp itself is an internal
-  // attribute the Admin API hides, so "terms pending" is read from the pending required action.
-  const users = await api('GET', '/users?max=200&briefRepresentation=false');
+  const users = await api('GET', '/users?max=200');
   return Promise.all(
     users.map(async (u) => {
       const [groups, consents] = await Promise.all([
@@ -81,21 +78,11 @@ export async function listUsers() {
         firstName: u.firstName,
         lastName: u.lastName,
         group: tierOf(groups),
-        termsPending: u.requiredActions.includes(TERMS_ACTION),
         // null: the user never consented to the frontend (e.g. never logged in).
         grantedScopes: consents.find((c) => c.clientId === FRONTEND_CLIENT_ID)?.grantedClientScopes ?? null,
       };
     }),
   );
-}
-
-// Makes the user accept the license terms again on their next login (e.g. after the terms change).
-export async function requireTerms(userId) {
-  const user = await api('GET', `/users/${userId}`);
-  if (!user.requiredActions.includes(TERMS_ACTION)) {
-    // Send the whole user back: the Admin API clears fields missing from a PUT.
-    await api('PUT', `/users/${userId}`, { ...user, requiredActions: [...user.requiredActions, TERMS_ACTION] });
-  }
 }
 
 export async function setUserGroup(userId, groupName) {

@@ -39,13 +39,15 @@ compose.yaml                 nginx, Keycloak, backend, frontend
 nginx/default.conf           routes /, /api/, /auth/ to the right container
 keycloak/seed.mjs            realm setup through the Keycloak Admin API
 keycloak/replay-deletions.mjs re-deletes logged account deletions after a backup restore
-keycloak/themes/poc/         branded login theme (CSS + license terms text)
+keycloak/themes/poc/         branded login theme (CSS)
 backend/src/server.js        Express app: math endpoints, error handling
 backend/src/auth.js          JWT validation (JWKS, iss, aud) and role checks
 backend/src/admin.js         /api/admin/* routes (admin role only)
 backend/src/keycloakAdmin.js Keycloak Admin API client (service account)
 backend/src/usageLog.js      per-request usage log (logs/usage.jsonl)
 backend/src/deletionLog.js   deleted accounts log (logs/deletions.jsonl)
+backend/src/terms.js         versioned license terms and acceptances
+backend/terms.json           every published version of the license terms
 frontend/src/main.js         keycloak-js login, calculator, admin panel
 ```
 
@@ -89,18 +91,22 @@ Roles live in the access token, so a group change reaches a user on their next t
 
 ## License terms
 
-Every user must accept the license terms after login, before Keycloak sends them back to the app.
-This is Keycloak's built-in **Terms and Conditions** required action, enabled by the seed as a *default action*,
-so every new user gets it (including users created from the admin panel).
+Every user must accept the current license terms before using the app. The terms are versioned in
+`backend/terms.json`, and the app shows them itself, right after the Keycloak login (Keycloak's built-in
+Terms and Conditions action is turned off).
 
-- **Accept**: Keycloak stores the time in the user's internal `terms_and_conditions` attribute and won't ask again.
-  The `terms-accepted-at` mapper copies it into the token as `terms_accepted_at`; the app shows the date.
-- **Decline**: the login is cancelled and the app gets `access_denied` with no token. The terms are shown again on the next login.
-- **Ask again** (admin panel): puts the required action back on a user, e.g. after the terms change.
+- **Publish a new version**: add an entry with a higher `version` to `backend/terms.json`. It's live right away,
+  no restart needed, and every user is asked again on their next request. Never edit or remove a published
+  version: acceptances point to it.
+- **Accept**: the backend appends `{time, userId, username, version}` to `backend/logs/terms-acceptances.jsonl`.
+  That file is the record of who accepted which version and when. The client sends the version it showed, and
+  the backend rejects it (`409`) if a newer one was published in the meantime.
+- **Decline**: the user is logged out.
+- **Until they accept**, the backend answers `403` with `code: "terms_not_accepted"` on every endpoint except
+  `/api/me` and `/api/terms*`. The terms screen can't be skipped by calling the API directly, and a user can
+  still delete their account without accepting.
 
-The text lives in `keycloak/themes/poc/login/messages/messages_en.properties` (`termsTitle`, `termsText`).
-Users who already existed when the terms were enabled aren't asked until an admin clicks **Ask again**;
-re-running the seed doesn't change that.
+The admin panel shows the version each user accepted.
 
 ## Permissions (consent)
 
@@ -132,8 +138,8 @@ optional scopes in `localStorage` and asks for them again on every login.
 ## User management (admin)
 
 Log in as `carol` to see the **Admin · Users** panel. From there you can create a user and pick their group,
-or move an existing user to another group. The table also shows whether each user accepted the license terms
-and which scopes they granted to the frontend.
+or move an existing user to another group. The table also shows which version of the license terms each user
+accepted and which scopes they granted to the frontend.
 
 The browser never calls the Keycloak Admin API itself:
 
@@ -146,13 +152,14 @@ Backend env (set in `compose.yaml`): `KEYCLOAK_ISSUER`, `KEYCLOAK_JWKS_URL`, `KE
 
 ## Logs and account deletion
 
-The backend writes two JSON-lines files (one JSON object per line) under `backend/logs/`, which is git-ignored.
+The backend writes JSON-lines files (one JSON object per line) under `backend/logs/`, which is git-ignored.
 The container runs as root, so the files belong to root on the host. Clear them with
 `docker compose exec backend rm logs/<file>`.
 
 - **`usage.jsonl`**: one line per `/api` request, written after the response is sent, so rejected calls (401/403)
   are logged too: time, user, method, path, query, status and duration. Request bodies are not logged, because
   admin requests can carry passwords. Path: `USAGE_LOG_FILE`.
+- **`terms-acceptances.jsonl`**: see [License terms](#license-terms).
 - **`deletions.jsonl`**: one line per deleted account: time, user ID (`sub`), username and who deleted it.
   Path: `DELETION_LOG_FILE`.
 
@@ -173,24 +180,26 @@ and `carol` even if they deleted their accounts.
 
 ## API
 
-All endpoints except `/api/health` require a valid token. Operands are `a` and `b` query params.
+All endpoints except `/api/health` require a valid token, and all except `/api/me` and `/api/terms*`
+require the current license terms to be accepted. Operands are `a` and `b` query params.
 
 | Endpoint                   | Role         | Result   |
 |----------------------------|--------------|----------|
 | `GET /api/health`          | —            | `ok`     |
 | `GET /api/me`              | any          | user, roles, granted scopes |
 | `DELETE /api/me`           | any          | delete your own account |
+| `GET /api/terms`           | any          | current terms and your last accepted version |
+| `POST /api/terms/accept`   | any          | accept the current terms: `{version}` |
 | `GET /api/sum?a=2&b=8`     | `math-1`     | `10`     |
 | `GET /api/multiply?a=2&b=8`| `math-2`     | `16`     |
 | `GET /api/power?a=2&b=8`   | `math-3`     | `256`    |
 | `GET /api/admin/users`     | `admin`      | users with their group |
 | `POST /api/admin/users`    | `admin`      | create user: `{username, email, firstName, lastName, password, group}` |
 | `PUT /api/admin/users/:id/group` | `admin` | set group: `{group}` |
-| `POST /api/admin/users/:id/require-terms` | `admin` | ask the user to accept the terms again |
 | `POST /api/email/send`     | scope `send-email`    | simulated email to the user |
 | `GET /api/contacts`        | scope `read-contacts` | fake contact list |
 
-Responses: `401` missing or invalid token, `403` missing role or scope, `400` invalid input, `404` unknown user,
+Responses: `401` missing or invalid token, `403` missing role or scope or terms not accepted, `400` invalid input, `404` unknown user,
 `409` username or email already taken.
 
 ## Seeding Keycloak
@@ -199,11 +208,11 @@ Responses: `401` missing or invalid token, `403` missing role or scope, `400` in
 It waits for Keycloak, logs in as the master-realm admin, then creates or updates:
 
 - realm `poc` (display name and the `poc` login theme)
-- the Terms and Conditions required action (enabled, default for new users)
+- the built-in Terms and Conditions required action, turned off (the app handles the terms)
 - client scopes `send-email` and `read-contacts` (shown on the consent screen)
 - realm roles `math-1`, `math-2`, `math-3`, `admin`
 - groups `basic`, `premium` and `admin` and the roles each one grants
-- clients `poc-frontend` (consent required, optional scopes, `poc-backend` audience and `terms_accepted_at` mappers) and `poc-backend`
+- clients `poc-frontend` (consent required, optional scopes, `poc-backend` audience mapper) and `poc-backend`
 - the `poc-backend` service account and its `realm-management` roles
 - users `alice`, `bob` and `carol`, their passwords, and their group membership (any `math-*` roles assigned directly to a user are removed, so groups are the only source)
 

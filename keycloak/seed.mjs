@@ -31,9 +31,9 @@ const config = {
     { name: 'math-3', description: 'Can call power' },
     { name: 'admin', description: 'Can create users and assign their group' },
   ],
-  // Required actions are shown after login until the user completes them.
-  // defaultAction adds it to every new user, including ones created through the Admin API.
-  requiredActions: [{ alias: 'TERMS_AND_CONDITIONS', enabled: true, defaultAction: true }],
+  // Keycloak's built-in Terms and Conditions action is turned off: the app shows versioned terms itself
+  // (backend/terms.json). Kept here so re-running the seed also disables it on existing realms.
+  requiredActions: [{ alias: 'TERMS_AND_CONDITIONS', enabled: false, defaultAction: false }],
   // Custom permissions the SPA can ask for. Each one is listed on Keycloak's consent screen and,
   // once granted, appears in the access token's `scope` claim.
   clientScopes: [
@@ -94,20 +94,9 @@ const config = {
             'access.token.claim': 'true',
           },
         },
-        {
-          // Keycloak stores when the user accepted the terms (epoch seconds) in this internal attribute.
-          name: 'terms-accepted-at',
-          protocol: 'openid-connect',
-          protocolMapper: 'oidc-usermodel-attribute-mapper',
-          config: {
-            'user.attribute': 'terms_and_conditions',
-            'claim.name': 'terms_accepted_at',
-            'jsonType.label': 'long',
-            'id.token.claim': 'true',
-            'access.token.claim': 'true',
-          },
-        },
       ],
+      // Deleted if present, for realms seeded before the terms moved into the app.
+      removedProtocolMappers: ['terms-accepted-at'],
     },
     {
       clientId: 'poc-backend',
@@ -226,6 +215,17 @@ async function upsertRequiredActions() {
     const path = `/${REALM}/authentication/required-actions/${action.alias}`;
     await api('PUT', path, { ...(await api('GET', path)), ...action });
     log('updated', 'action', action.alias);
+    if (!action.enabled) await clearRequiredAction(action.alias);
+  }
+}
+
+// Removes a turned-off required action from users who still have it pending, so it can't block their login.
+async function clearRequiredAction(alias) {
+  const users = await api('GET', `/${REALM}/users?max=1000&briefRepresentation=false`);
+  for (const user of users.filter((u) => u.requiredActions.includes(alias))) {
+    // Send the whole user back: the Admin API clears fields missing from a PUT.
+    await api('PUT', `/${REALM}/users/${user.id}`, { ...user, requiredActions: user.requiredActions.filter((a) => a !== alias) });
+    log('cleared', 'action', `${alias} on ${user.username}`);
   }
 }
 
@@ -249,7 +249,7 @@ const findClient = async (clientId) =>
   (await api('GET', `/${REALM}/clients?clientId=${encodeURIComponent(clientId)}`))[0];
 
 async function upsertClients() {
-  for (const { protocolMappers = [], optionalClientScopes = [], serviceAccountRoles = {}, ...client } of config.clients) {
+  for (const { protocolMappers = [], removedProtocolMappers = [], optionalClientScopes = [], serviceAccountRoles = {}, ...client } of config.clients) {
     const existing = await findClient(client.clientId);
     if (existing) {
       await api('PUT', `/${REALM}/clients/${existing.id}`, {
@@ -275,6 +275,10 @@ async function upsertClients() {
         await api('POST', mappersPath, mapper);
         log('created', 'mapper', `${client.clientId}/${mapper.name}`);
       }
+    }
+    for (const mapper of currentMappers.filter((m) => removedProtocolMappers.includes(m.name))) {
+      await api('DELETE', `${mappersPath}/${mapper.id}`);
+      log('deleted', 'mapper', `${client.clientId}/${mapper.name}`);
     }
 
     const optionalPath = `/${REALM}/clients/${id}/optional-client-scopes`;

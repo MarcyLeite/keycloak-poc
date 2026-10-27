@@ -50,8 +50,46 @@ async function api(path, { method = 'GET', body } = {}) {
     },
     body: body && JSON.stringify(body),
   });
-  return { status: res.status, ok: res.ok, body: await res.json() };
+  const result = { status: res.status, ok: res.ok, body: await res.json() };
+  // New terms were published while the user was in the app: ask for them now.
+  if (res.status === 403 && result.body.code === 'terms_not_accepted') loadTerms().then(render);
+  return result;
 }
+
+// --- License terms ---------------------------------------------------------
+
+// { current: {version, publishedAt, title, html}, accepted: {version, time} | null }, from the backend.
+let terms = null;
+const termsPending = () => terms && terms.accepted?.version !== terms.current.version;
+
+async function loadTerms() {
+  const { ok, body } = await api('/terms');
+  if (ok) terms = body;
+}
+
+function renderTerms() {
+  const { title, version, publishedAt, html } = terms.current;
+  $('terms-title').textContent = title;
+  $('terms-version').textContent = `Version ${version}, published ${new Date(publishedAt).toLocaleDateString()}`
+    + (terms.accepted ? ` · You accepted version ${terms.accepted.version} before; the terms have changed.` : '');
+  // The HTML comes from our own backend/terms.json, not from users.
+  $('terms-text').innerHTML = html;
+  $('terms-error').textContent = '';
+}
+
+$('terms-accept').addEventListener('click', async () => {
+  const { ok, body } = await api('/terms/accept', { method: 'POST', body: { version: terms.current.version } });
+  if (!ok) {
+    // 409: a newer version was published while the screen was open. Show that one instead.
+    await loadTerms();
+    render();
+    $('terms-error').textContent = `Error: ${body.error}`;
+    return;
+  }
+  terms.accepted = body;
+  render();
+});
+$('terms-decline').addEventListener('click', () => keycloak.logout({ redirectUri: window.location.origin }));
 
 async function callApi(op) {
   const a = encodeURIComponent($('a').value);
@@ -134,19 +172,10 @@ async function loadUsers() {
       });
       tr.insertCell().append(select);
 
-      const terms = tr.insertCell();
-      if (u.termsPending) {
-        terms.textContent = '⏳ pending';
-      } else {
-        terms.textContent = '✅ accepted ';
-        const again = Object.assign(document.createElement('button'), { textContent: 'Ask again' });
-        again.addEventListener('click', async () => {
-          const res = await api(`/admin/users/${u.id}/require-terms`, { method: 'POST' });
-          setAdminStatus(res.ok ? `${u.username} must accept the terms on next login` : `Error: ${res.body.error}`);
-          loadUsers();
-        });
-        terms.append(again);
-      }
+      const accepted = u.termsAccepted;
+      tr.insertCell().textContent = accepted?.version === terms?.current.version
+        ? `✅ v${accepted.version}`
+        : `⏳ pending${accepted ? ` (accepted v${accepted.version})` : ''}`;
       tr.insertCell().textContent = u.grantedScopes ? u.grantedScopes.join(', ') : '— (never consented)';
       return tr;
     });
@@ -167,17 +196,19 @@ $('create-user').addEventListener('submit', async (e) => {
 // ---------------------------------------------------------------------------
 
 function render() {
-  $('logged-in').hidden = !keycloak.authenticated;
   $('logged-out').hidden = keycloak.authenticated;
+  $('terms-screen').hidden = !keycloak.authenticated || !termsPending();
+  $('logged-in').hidden = !keycloak.authenticated || termsPending();
   if (!keycloak.authenticated) return;
+  if (termsPending()) return renderTerms();
 
   const claims = keycloak.tokenParsed;
   $('username').textContent = claims.preferred_username;
   const roles = claims.realm_access?.roles ?? [];
   $('roles').textContent = roles.filter((r) => r.startsWith('math-') || r === 'admin').join(', ') || 'none';
   $('claims').textContent = JSON.stringify(claims, null, 2);
-  $('terms').textContent = claims.terms_accepted_at
-    ? `License terms accepted on ${new Date(claims.terms_accepted_at * 1000).toLocaleString()}`
+  $('terms').textContent = terms
+    ? `License terms v${terms.accepted.version} accepted on ${new Date(terms.accepted.time).toLocaleString()}`
     : '';
   renderPermissions();
 
@@ -222,8 +253,9 @@ try {
     window.location.replace(window.location.pathname);
   }
   if (err?.error === 'access_denied') {
-    $('login-error').textContent = 'Login cancelled: the license terms or the requested permissions were declined.';
+    $('login-error').textContent = 'Login cancelled: the requested permissions were declined.';
   }
   console.error('Keycloak init failed', err);
 }
+if (keycloak.authenticated) await loadTerms();
 render();
