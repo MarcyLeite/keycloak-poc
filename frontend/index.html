@@ -67,6 +67,21 @@
             <thead><tr><th>Username</th><th>Name</th><th>Email</th><th>Group</th><th>Terms</th><th>Granted scopes</th></tr></thead>
             <tbody id="users"></tbody>
           </table>
+
+          <h2>Admin · License terms</h2>
+          <p class="hint">Publishing saves a new version; earlier versions stay as they were. Every user, you included,
+            must accept the new version before using the app again.</p>
+          <form id="publish-terms" class="terms-form">
+            <input name="title" placeholder="Title" aria-label="Title" required />
+            <textarea name="text" rows="10" aria-label="Terms text" required></textarea>
+            <p class="hint">Plain text. Leave a blank line between paragraphs.</p>
+            <button type="submit" id="publish-terms-button">Publish new version</button>
+          </form>
+          <p id="terms-admin-status" class="hint"></p>
+          <table>
+            <thead><tr><th>Version</th><th>Published</th><th>By</th><th>Text</th></tr></thead>
+            <tbody id="terms-versions"></tbody>
+          </table>
         </div>
 
         <h2>Your account</h2>

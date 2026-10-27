@@ -95,8 +95,11 @@ Every user must accept the current license terms before using the app. The terms
 `backend/terms.json`, and the app shows them itself, right after the Keycloak login (Keycloak's built-in
 Terms and Conditions action is turned off).
 
-- **Publish a new version**: add an entry with a higher `version` to `backend/terms.json`. It's live right away,
-  no restart needed, and every user is asked again on their next request. Never edit or remove a published
+- **Publish a new version**: admins use the **Admin · License terms** panel. It starts from the current text;
+  edit it (plain text, blank lines between paragraphs) and publish. The backend appends a new entry with the next
+  `version`, the time and the admin's username to `backend/terms.json`, escaping the text into HTML. Earlier
+  versions are never changed. Every user, the admin included, is asked to accept it on their next request.
+  You can also add an entry by hand; it's live right away, no restart needed. Never edit or remove a published
   version: acceptances point to it.
 - **Accept**: the backend appends `{time, userId, username, version}` to `backend/logs/terms-acceptances.jsonl`.
   That file is the record of who accepted which version and when. The client sends the version it showed, and
@@ -106,7 +109,8 @@ Terms and Conditions action is turned off).
   `/api/me` and `/api/terms*`. The terms screen can't be skipped by calling the API directly, and a user can
   still delete their account without accepting.
 
-The admin panel shows the version each user accepted.
+The admin panel shows the version each user accepted, and every published version with who published it.
+`backend/terms.json` is tracked by git, so versions published from the app show up as changes to commit.
 
 ## Permissions (consent)
 
@@ -196,6 +200,8 @@ require the current license terms to be accepted. Operands are `a` and `b` query
 | `GET /api/admin/users`     | `admin`      | users with their group |
 | `POST /api/admin/users`    | `admin`      | create user: `{username, email, firstName, lastName, password, group}` |
 | `PUT /api/admin/users/:id/group` | `admin` | set group: `{group}` |
+| `GET /api/admin/terms`     | `admin`      | every published version of the terms, newest first |
+| `POST /api/admin/terms`    | `admin`      | publish a new version: `{title, text}` (plain text) |
 | `POST /api/email/send`     | scope `send-email`    | simulated email to the user |
 | `GET /api/contacts`        | scope `read-contacts` | fake contact list |
 

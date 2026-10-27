@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { TIER_GROUPS, createUser, listUsers, setUserGroup } from './keycloakAdmin.js';
-import { acceptanceOf } from './terms.js';
+import { acceptanceOf, listTerms, publishTerms } from './terms.js';
 
 // Mounted behind authenticate + requireRole('admin').
 export const adminRouter = Router();
@@ -39,4 +39,19 @@ adminRouter.put('/users/:id/group', async (req, res) => {
   await setUserGroup(req.params.id, group);
   console.log(`[admin] ${req.user.username} moved user ${req.params.id} to group ${group}`);
   res.json({ id: req.params.id, group });
+});
+
+adminRouter.get('/terms', async (_req, res) => {
+  res.json(await listTerms());
+});
+
+// Publishes a new version. Every user, including this admin, must accept it before using the API again.
+adminRouter.post('/terms', async (req, res) => {
+  const { title, text } = req.body ?? {};
+  if (typeof title !== 'string' || !title.trim() || typeof text !== 'string' || !text.trim()) {
+    return res.status(400).json({ error: 'Missing fields: title and text are required' });
+  }
+  const entry = await publishTerms({ title: title.trim(), text }, req.user.username);
+  console.log(`[admin] ${req.user.username} published license terms version ${entry.version}`);
+  res.status(201).json(entry);
 });

@@ -193,6 +193,53 @@ $('create-user').addEventListener('submit', async (e) => {
   loadUsers();
 });
 
+// Plain text for the publish form: one paragraph per <p>, blank lines between them.
+// DOMParser never runs scripts, and the text only goes into a textarea.
+function htmlToText(html) {
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  doc.querySelectorAll('br').forEach((br) => br.replaceWith('\n'));
+  const paragraphs = [...doc.body.querySelectorAll('p')].map((p) => p.textContent.trim());
+  return paragraphs.length ? paragraphs.join('\n\n') : doc.body.textContent.trim();
+}
+
+async function loadTermsAdmin() {
+  const { ok, body } = await api('/admin/terms');
+  if (!ok) return ($('terms-admin-status').textContent = `Could not load terms: ${body.error}`);
+
+  // Start from the current version, so the admin edits it rather than retyping it.
+  const [latest] = body;
+  const form = $('publish-terms');
+  form.title.value = latest.title;
+  form.text.value = htmlToText(latest.html);
+  $('publish-terms-button').textContent = `Publish as version ${latest.version + 1}`;
+
+  const rows = body.map((t) => {
+    const tr = document.createElement('tr');
+    tr.insertCell().textContent = `v${t.version}${t.version === latest.version ? ' (current)' : ''}`;
+    tr.insertCell().textContent = new Date(t.publishedAt).toLocaleString();
+    tr.insertCell().textContent = t.publishedBy ?? '—';
+    const details = document.createElement('details');
+    const summary = Object.assign(document.createElement('summary'), { textContent: t.title });
+    // Same HTML every user sees on the terms screen; the backend escapes what admins publish.
+    const text = Object.assign(document.createElement('div'), { className: 'terms-text', innerHTML: t.html });
+    details.append(summary, text);
+    tr.insertCell().append(details);
+    return tr;
+  });
+  $('terms-versions').replaceChildren(...rows);
+}
+
+$('publish-terms').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const data = Object.fromEntries(new FormData(e.currentTarget));
+  if (!confirm('Publish these terms as a new version? Every user, you included, must accept them again.')) return;
+  const { ok, body } = await api('/admin/terms', { method: 'POST', body: data });
+  if (!ok) return ($('terms-admin-status').textContent = `Error: ${body.error}`);
+  // The admin hasn't accepted the new version either, so this shows them the terms screen.
+  await loadTerms();
+  render();
+});
+
 // ---------------------------------------------------------------------------
 
 function render() {
@@ -218,6 +265,7 @@ function render() {
   if (isAdmin) {
     $('create-user').group.replaceChildren(...GROUPS.map((g) => new Option(g, g)));
     loadUsers();
+    loadTermsAdmin();
   }
 }
 
