@@ -2,6 +2,7 @@ import express from 'express';
 import { authenticate, requireRole, requireScope } from './auth.js';
 import { adminRouter } from './admin.js';
 import { KeycloakError } from './keycloakAdmin.js';
+import { usageLog } from './usageLog.js';
 
 const PORT = process.env.PORT ?? 3000;
 const app = express();
@@ -20,7 +21,7 @@ function parseOperands(req, res) {
 
 app.get('/api/health', (_req, res) => res.json({ status: 'ok' }));
 
-app.use('/api', authenticate);
+app.use('/api', usageLog, authenticate);
 
 app.get('/api/me', (req, res) => res.json(req.user));
 
