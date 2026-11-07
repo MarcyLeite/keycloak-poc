@@ -75,6 +75,8 @@ const config = {
       directAccessGrantsEnabled: false,
       // Users must approve the scopes this client gets (profile, email, roles...) on a consent screen.
       consentRequired: true,
+      // Keycloak defaults this to !consentRequired on create, which would strip every realm role from the tokens.
+      fullScopeAllowed: true,
       // Not granted at login: the SPA asks for them later with scope=..., which shows the consent screen again.
       optionalClientScopes: ['send-email', 'read-contacts'],
       redirectUris: [`${FRONTEND_URL}/*`],
